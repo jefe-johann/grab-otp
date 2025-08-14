@@ -6,9 +6,15 @@
   
   "permissions": [
     "activeTab",
+    "tabs",
     "storage", 
     "identity",
     "https://www.googleapis.com/*"
+  ],
+
+  "optional_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   
   "background": {

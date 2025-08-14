@@ -8,7 +8,7 @@ console.log('[OTP Bridge] Content script loaded on:', window.location.href);
 const port = chrome.runtime.connect({ name: 'otpBridge' });
 
 port.onMessage.addListener((message) => {
-  console.log('[OTP Bridge] Received message:', message);
+  console.log('[OTP Bridge] Received message:', message.action);
   
   if (message.action === 'fillOTP' && message.otp) {
     fillOTPCode(message.otp);
@@ -21,7 +21,7 @@ port.onDisconnect.addListener(() => {
 
 // Simple OTP filling function (can be enhanced later)
 async function fillOTPCode(otpCode: string): Promise<void> {
-  console.log('[OTP Bridge] Attempting to fill OTP:', otpCode);
+  console.log('[OTP Bridge] Attempting to fill OTP (' + otpCode.length + ' digits)');
   
   // Try common OTP input selectors
   const selectors = [
@@ -37,7 +37,7 @@ async function fillOTPCode(otpCode: string): Promise<void> {
     
     for (const input of inputs) {
       if (input.offsetParent !== null && !input.disabled && !input.readOnly) {
-        console.log('[OTP Bridge] Filling input:', input);
+        console.log('[OTP Bridge] Filling input (redacted)');
         
         // Fill the input
         input.value = otpCode;

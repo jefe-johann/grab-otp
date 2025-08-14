@@ -37,7 +37,8 @@ interface GmailMessageResponse {
 }
 
 class FirefoxGmailOTPFetcher {
-  // Removed cached token - use browser identity API for secure token management
+  // Port connections for bridges (tab ID -> port)
+  private activePorts = new Map<number, any>();
   
   private readonly OTP_PATTERNS = [
     /\b(\d{6})\b/g,           // 6-digit codes
@@ -50,26 +51,28 @@ class FirefoxGmailOTPFetcher {
   ];
 
   // Fire-and-forget OTP fetch with full background processing
-  async processOTPRequest(domain: string, requestTimestamp: number, autoFill: boolean = false): Promise<void> {
+  async processOTPRequest(domain: string, requestTimestamp: number, autoFill: boolean = false, tabId?: number): Promise<void> {
     console.log(`Starting OTP fetch for domain: ${domain}, autoFill: ${autoFill}`);
     
     try {
       const result = await this.fetchOTPForDomain(domain);
       
       if (result.success && result.otp) {
-        if (autoFill) {
-          // Try auto-fill first
-          try {
-            await this.injectAndFillOTP(result.otp);
+        if (autoFill && tabId) {
+          // Try auto-fill via bridge first
+          const port = this.activePorts.get(tabId);
+          if (port) {
+            console.log('[Firefox Background] Sending OTP to bridge for auto-fill');
+            port.postMessage({ action: 'fillOTP', otp: result.otp });
             await this.showPopupWithResult({
               success: true,
               otp: result.otp,
               domain: domain,
               message: `OTP: ${result.otp} (auto-filled)`
             });
-          } catch (error) {
-            console.error('Auto-fill failed, falling back to clipboard:', error);
-            // Fall back to clipboard if auto-fill fails
+          } else {
+            console.log('[Firefox Background] No bridge port found, falling back to clipboard');
+            // Fall back to clipboard if no bridge
             await this.copyToClipboard(result.otp);
             await this.showPopupWithResult({
               success: true,
@@ -144,9 +147,10 @@ class FirefoxGmailOTPFetcher {
     } catch (error) {
       console.error('Error fetching OTP:', error);
       
-      // If it's an auth error, suggest re-authentication
+      // If it's an auth error, clear token cache and suggest re-authentication
       if (error instanceof Error && error.message.includes('401')) {
-        console.log('Authentication expired, user should try again');
+        console.log('Authentication expired, clearing token cache');
+        await this.clearTokenCache();
         return { success: false, error: 'Authentication expired - please try again' };
       }
       
@@ -269,6 +273,13 @@ class FirefoxGmailOTPFetcher {
 
   private async getAccessToken(interactive: boolean = true): Promise<string | null> {
     try {
+      // Check for cached token first
+      const cached = await this.getCachedToken();
+      if (cached) {
+        console.log('Using cached OAuth token');
+        return cached;
+      }
+
       console.log(`Firefox OAuth: Starting authentication flow (interactive: ${interactive})...`);
       
       // Firefox OAuth flow - separate client ID for Firefox  
@@ -287,7 +298,7 @@ class FirefoxGmailOTPFetcher {
       
       console.log('Extracted hash:', hash);
       console.log('Using redirect URI:', redirectUri);
-      console.log('Using client ID:', firefoxClientId);
+      console.log('OAuth client configured');
       
       const params = new URLSearchParams({
         client_id: firefoxClientId,
@@ -298,7 +309,7 @@ class FirefoxGmailOTPFetcher {
       });
       
       const authUrl = `https://accounts.google.com/o/oauth2/auth?${params}`;
-      console.log('Auth URL:', authUrl);
+      console.log('Auth URL configured for OAuth flow');
 
       console.log('Launching web auth flow...');
       const responseUrl = await browser.identity.launchWebAuthFlow({
@@ -306,17 +317,23 @@ class FirefoxGmailOTPFetcher {
         interactive: interactive
       });
 
-      console.log('Response URL:', responseUrl);
+      console.log('OAuth response received:', responseUrl ? 'Success' : 'Failed');
 
       if (responseUrl) {
         // Parse access token from URL fragment
         const urlFragment = responseUrl.split('#')[1];
-        console.log('URL fragment:', urlFragment);
+        console.log('URL fragment received for token extraction');
         if (urlFragment) {
           const urlParams = new URLSearchParams(urlFragment);
           const token = urlParams.get('access_token');
-          console.log('Token extraction:', token ? 'Success' : 'Failed');
-          return token;
+          const expiresIn = urlParams.get('expires_in');
+          
+          if (token) {
+            console.log('Token extraction:', 'Success');
+            // Cache the token with expiration
+            await this.cacheToken(token, expiresIn ? parseInt(expiresIn) : 3600);
+            return token;
+          }
         }
       }
       
@@ -325,6 +342,52 @@ class FirefoxGmailOTPFetcher {
     } catch (error) {
       console.error('Authentication error:', error);
       return null;
+    }
+  }
+
+  private async getCachedToken(): Promise<string | null> {
+    try {
+      const result = await browser.storage.local.get(['oauth_token', 'oauth_expires']);
+      const token = result.oauth_token;
+      const expires = result.oauth_expires;
+      
+      if (token && expires && Date.now() < expires) {
+        return token;
+      }
+      
+      // Token expired or doesn't exist, clear cache
+      if (token) {
+        console.log('Cached token expired, clearing cache');
+        await browser.storage.local.remove(['oauth_token', 'oauth_expires']);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error reading cached token:', error);
+      return null;
+    }
+  }
+
+  private async cacheToken(token: string, expiresInSeconds: number): Promise<void> {
+    try {
+      // Cache token with 5-minute buffer before expiration
+      const expiresAt = Date.now() + ((expiresInSeconds - 300) * 1000);
+      await browser.storage.local.set({
+        oauth_token: token,
+        oauth_expires: expiresAt
+      });
+      console.log('OAuth token cached successfully');
+    } catch (error) {
+      console.error('Error caching token:', error);
+    }
+  }
+
+  private async clearTokenCache(): Promise<void> {
+    try {
+      await browser.storage.local.remove(['oauth_token', 'oauth_expires']);
+      console.log('OAuth token cache cleared');
+    } catch (error) {
+      console.error('Error clearing token cache:', error);
     }
   }
 
@@ -340,6 +403,9 @@ class FirefoxGmailOTPFetcher {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('401 Unauthorized - token expired');
+      }
       throw new Error(`Gmail API error: ${response.status}`);
     }
 
@@ -358,6 +424,9 @@ class FirefoxGmailOTPFetcher {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('401 Unauthorized - token expired');
+      }
       throw new Error(`Gmail API error: ${response.status}`);
     }
 
@@ -416,7 +485,7 @@ class FirefoxGmailOTPFetcher {
 
   private async injectAndFillOTP(otp: string): Promise<void> {
     try {
-      console.log('Attempting to inject and fill OTP:', otp);
+      console.log('Attempting to inject and fill OTP (' + otp.length + ' digits)');
       
       // Get the active tab
       const results = await browser.tabs.query({active: true, currentWindow: true});
@@ -464,17 +533,153 @@ class FirefoxGmailOTPFetcher {
       throw error;
     }
   }
+
+  // Port management methods
+  addBridgePort(tabId: number, port: any): void {
+    this.activePorts.set(tabId, port);
+    console.log('[Firefox Background] Bridge port added for tab:', tabId);
+  }
+
+  removeBridgePort(tabId: number): void {
+    this.activePorts.delete(tabId);
+    console.log('[Firefox Background] Bridge port removed for tab:', tabId);
+  }
+
+  getBridgePort(tabId: number): any {
+    return this.activePorts.get(tabId);
+  }
 }
 
 const firefoxOtpFetcher = new FirefoxGmailOTPFetcher();
 
-// Fire-and-forget message handler
-browser.runtime.onMessage.addListener((message: FetchOTPMessage) => {
+// Long-lived port connection handler
+browser.runtime.onConnect.addListener((port: any) => {
+  if (port.name === 'firefoxOtpBridge') {
+    console.log('[Firefox Background] Bridge connected from tab:', port.sender?.tab?.id);
+    
+    if (port.sender?.tab?.id) {
+      firefoxOtpFetcher.addBridgePort(port.sender.tab.id, port);
+      
+      port.onDisconnect.addListener(() => {
+        console.log('[Firefox Background] Bridge disconnected from tab:', port.sender?.tab?.id);
+        if (port.sender?.tab?.id) {
+          firefoxOtpFetcher.removeBridgePort(port.sender.tab.id);
+        }
+      });
+      
+      // Handle messages from bridge
+      port.onMessage.addListener((message: any) => {
+        if (message.action === 'fillResult') {
+          console.log('[Firefox Background] Bridge fill result:', message.success ? 'Success' : 'Failed');
+        }
+      });
+    }
+  }
+});
+
+// Enhanced message handler
+browser.runtime.onMessage.addListener(async (message: any, sender: any, sendResponse: any) => {
+  if (message.action === 'injectBridge') {
+    // Immediately inject bridge on user interaction
+    try {
+      console.log('[Firefox Background] Injecting bridge for tab:', message.tabId);
+      await injectBridgeScript(message.tabId);
+      return { success: true };
+    } catch (error) {
+      console.error('[Firefox Background] Bridge injection failed:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  }
+  
   if (message.action === 'fetchOTP') {
     // Process in background without blocking the message response
-    firefoxOtpFetcher.processOTPRequest(message.domain, message.timestamp, message.autoFill || false);
+    firefoxOtpFetcher.processOTPRequest(message.domain, message.timestamp, message.autoFill || false, message.tabId);
     // Return immediately (no response needed)
     return;
   }
+  
+  if (message.action === 'sendOTPToBridge') {
+    // Forward OTP to bridge via port
+    const port = firefoxOtpFetcher.getBridgePort(message.tabId);
+    if (port) {
+      console.log('[Firefox Background] Forwarding OTP to bridge');
+      port.postMessage({ action: 'fillOTP', otp: message.otp });
+    } else {
+      console.log('[Firefox Background] No bridge port found for tab:', message.tabId);
+    }
+    return;
+  }
 });
+
+// Feature detection for injection API
+async function injectBridgeScript(tabId: number): Promise<void> {
+  const bridgeCode = `
+    // Firefox OTP Bridge Content Script
+    console.log('[Firefox OTP Bridge] Loading on:', window.location.href);
+    
+    // Establish connection to background
+    const port = browser.runtime.connect({ name: 'firefoxOtpBridge' });
+    
+    port.onMessage.addListener((message) => {
+      if (message.action === 'fillOTP' && message.otp) {
+        fillOTPCode(message.otp);
+      }
+    });
+    
+    // Enhanced OTP filling function
+    async function fillOTPCode(otpCode) {
+      console.log('[Firefox OTP Bridge] Filling OTP (' + otpCode.length + ' digits)');
+      
+      const selectors = [
+        'input[autocomplete="one-time-code"]',
+        'input[inputmode="numeric"]', 
+        'input[type="text"]',
+        'input[type="number"]',
+        'input:not([type])'
+      ];
+      
+      for (const selector of selectors) {
+        const inputs = document.querySelectorAll(selector);
+        
+        for (const input of inputs) {
+          if (input.offsetParent !== null && !input.disabled && !input.readOnly) {
+            // Enhanced filling with proper events for React/Vue
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeInputValueSetter.call(input, otpCode);
+            
+            // Dispatch events that modern frameworks expect
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('keyup', { bubbles: true }));
+            input.focus();
+            
+            console.log('[Firefox OTP Bridge] OTP filled successfully');
+            port.postMessage({ action: 'fillResult', success: true });
+            return;
+          }
+        }
+      }
+      
+      console.log('[Firefox OTP Bridge] No suitable input found');
+      port.postMessage({ action: 'fillResult', success: false });
+    }
+  `;
+  
+  // Feature detection: prefer scripting API, fallback to tabs
+  if (browser.scripting && browser.scripting.executeScript) {
+    console.log('[Firefox Background] Using modern scripting API');
+    await browser.scripting.executeScript({
+      target: { tabId: tabId, allFrames: true },
+      func: new Function(bridgeCode)
+    });
+  } else if (browser.tabs && browser.tabs.executeScript) {
+    console.log('[Firefox Background] Using legacy tabs API'); 
+    await browser.tabs.executeScript(tabId, {
+      code: bridgeCode,
+      allFrames: true
+    });
+  } else {
+    throw new Error('No script injection API available');
+  }
+}
 

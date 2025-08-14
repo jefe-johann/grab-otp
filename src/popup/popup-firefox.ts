@@ -11,6 +11,7 @@ interface OTPRequest {
   action: string;
   domain: string;
   autoFill?: boolean;
+  tabId?: number;
   timestamp: number;
 }
 
@@ -72,26 +73,54 @@ class FirefoxPopupController {
 
   private async handleGrabOTP() {
     this.setLoading(true);
-    this.showStatus('Request sent, processing in background...', 'loading');
+    this.showStatus('Searching Gmail for OTP...', 'loading');
 
     try {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.url) {
-        throw new Error('Unable to get current tab URL');
+      if (!tab?.url || !tab.id) {
+        throw new Error('Unable to get current tab URL or ID');
       }
 
       const domain = new URL(tab.url).hostname;
       
-      // Fire-and-forget: send message but don't wait for response
+      // If auto-fill is enabled, inject bridge immediately via background
+      if (this.autoFillCheckbox.checked) {
+        try {
+          console.log('[Firefox Popup] Auto-fill enabled, requesting bridge injection...');
+          const injectionResult = await browser.runtime.sendMessage({
+            action: 'injectBridge',
+            tabId: tab.id
+          });
+          
+          if (!injectionResult.success) {
+            throw new Error(injectionResult.error || 'Bridge injection failed');
+          }
+          
+          // Wait a moment for bridge to connect
+          await new Promise(resolve => setTimeout(resolve, 100));
+          console.log('[Firefox Popup] Bridge injected, now fetching OTP...');
+        } catch (error) {
+          console.error('[Firefox Popup] Failed to inject bridge:', error);
+          this.showStatus('Auto-fill setup failed, using clipboard only', 'error');
+          // Continue with clipboard-only mode
+        }
+      }
+      
+      // Send OTP fetch request (fire-and-forget style for Firefox)
       browser.runtime.sendMessage({
         action: 'fetchOTP',
         domain: domain,
         autoFill: this.autoFillCheckbox.checked,
+        tabId: tab.id,
         timestamp: Date.now()
       } as OTPRequest);
 
-      // Show user that request was sent
-      this.showStatus('Request sent! Watch for badge indicator on extension icon.', 'success');
+      // Show user that request was sent - Firefox uses badge system
+      if (this.autoFillCheckbox.checked) {
+        this.showStatus('Request sent! OTP will auto-fill when ready. Watch extension badge.', 'success');
+      } else {
+        this.showStatus('Request sent! OTP will be copied to clipboard. Watch extension badge.', 'success');  
+      }
       
     } catch (error) {
       console.error('Error sending OTP request:', error);
