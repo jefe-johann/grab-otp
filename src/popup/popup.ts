@@ -36,28 +36,15 @@ class PopupController {
 
   private async displayCurrentDomain() {
     try {
-      console.log('Attempting to get current tab...');
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      console.log('Tab result:', tab);
-      console.log('Tab properties:', {
-        id: tab?.id,
-        url: tab?.url,
-        title: tab?.title,
-        active: tab?.active,
-        pendingUrl: tab?.pendingUrl
-      });
       
       if (tab?.url) {
         const domain = new URL(tab.url).hostname;
         this.domainElement.textContent = `Current site: ${domain}`;
-        console.log('Domain detected:', domain);
       } else if (tab?.pendingUrl) {
         const domain = new URL(tab.pendingUrl).hostname;
         this.domainElement.textContent = `Current site: ${domain}`;
-        console.log('Domain detected from pendingUrl:', domain);
       } else {
-        console.log('Tab found but no URL or pendingUrl available');
-        console.log('Available tab keys:', Object.keys(tab || {}));
         this.domainElement.textContent = 'Click "Get OTP" to detect current site';
       }
     } catch (error) {
@@ -89,17 +76,9 @@ class PopupController {
     this.showStatus('Searching Gmail for OTP...', 'loading');
 
     try {
-      console.log('Getting tab for OTP fetch (user interaction should grant activeTab)...');
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const tab = tabs[0];
       
-      console.log('Tab for OTP fetch:', tab);
-      console.log('Tab properties for OTP:', {
-        id: tab?.id,
-        url: tab?.url,
-        title: tab?.title,
-        pendingUrl: tab?.pendingUrl
-      });
       
       const tabUrl = tab?.url || tab?.pendingUrl;
       if (!tabUrl) {
@@ -108,7 +87,6 @@ class PopupController {
       }
 
       const domain = new URL(tabUrl).hostname;
-      console.log('Using domain for OTP search:', domain);
       
       // If auto-fill is enabled, inject bridge immediately (while activeTab is hot)
       if (this.autoFillCheckbox.checked) {
@@ -185,49 +163,6 @@ class PopupController {
     }
   }
 
-  private async injectAndFillOTP(otp: string, tabId: number): Promise<void> {
-    try {
-      console.log('[Popup] Injecting auto-fill script into tab:', tabId);
-      
-      // Inject the OTP auto-fill content script from popup context (has activeTab permission)
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ['otp-autofill.js']
-      });
-
-      console.log('[Popup] Content script injected, calling fillOTP function');
-      
-      // Give the content script a moment to load, then call fillOTP
-      setTimeout(async () => {
-        try {
-          const result = await chrome.scripting.executeScript({
-            target: { tabId },
-            func: async (otpCode: string) => {
-              console.log('[Popup->Content] Attempting to fill OTP:', otpCode);
-              if (typeof (window as any).fillOTP === 'function') {
-                const success = await (window as any).fillOTP(otpCode);
-                console.log('[Popup->Content] Fill result:', success);
-                return { success, error: null };
-              } else {
-                console.log('[Popup->Content] fillOTP function not found');
-                return { success: false, error: 'fillOTP function not available' };
-              }
-            },
-            args: [otp]
-          });
-          console.log('[Popup] Auto-fill script execution result:', result);
-        } catch (error) {
-          console.error('[Popup] Error executing auto-fill function:', error);
-          throw error;
-        }
-      }, 100); // Small delay to ensure content script is ready
-
-      console.log('[Popup] Auto-fill injection initiated successfully');
-    } catch (error) {
-      console.error('[Popup] Failed to inject auto-fill script:', error);
-      throw error;
-    }
-  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
