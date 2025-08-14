@@ -110,6 +110,24 @@ class PopupController {
       const domain = new URL(tabUrl).hostname;
       console.log('Using domain for OTP search:', domain);
       
+      // If auto-fill is enabled, inject bridge immediately (while activeTab is hot)
+      if (this.autoFillCheckbox.checked) {
+        try {
+          console.log('[Popup] Auto-fill enabled, injecting bridge immediately...');
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id! },
+            files: ['otp-bridge.js']
+          });
+          
+          // Wait a moment for bridge to connect
+          await new Promise(resolve => setTimeout(resolve, 100));
+          console.log('[Popup] Bridge injected, now fetching OTP...');
+        } catch (error) {
+          console.error('[Popup] Failed to inject bridge:', error);
+          this.showStatus('Auto-fill setup failed, using clipboard only', 'error');
+        }
+      }
+
       const response = await chrome.runtime.sendMessage({
         action: 'fetchOTP',
         domain: domain,
@@ -120,15 +138,15 @@ class PopupController {
         // Always copy to clipboard
         await this.copyToClipboard(response.otp);
         
-        // Try auto-fill if enabled (do this from popup context for proper activeTab permission)
+        // If auto-fill was enabled and bridge was injected, send OTP via background
         if (this.autoFillCheckbox.checked) {
-          try {
-            await this.injectAndFillOTP(response.otp, tab.id!);
-            this.showStatus(`OTP auto-filled & copied: ${response.otp}`, 'success');
-          } catch (error) {
-            console.error('Auto-fill failed:', error);
-            this.showStatus(`OTP copied to clipboard: ${response.otp} (auto-fill failed)`, 'success');
-          }
+          // Send OTP to background, which will forward to bridge
+          chrome.runtime.sendMessage({
+            action: 'sendOTPToBridge',
+            tabId: tab.id!,
+            otp: response.otp
+          });
+          this.showStatus(`OTP auto-filled & copied: ${response.otp}`, 'success');
         } else {
           this.showStatus(`OTP copied to clipboard: ${response.otp}`, 'success');
         }

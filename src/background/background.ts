@@ -189,10 +189,46 @@ class GmailOTPFetcher {
 
 const otpFetcher = new GmailOTPFetcher();
 
-chrome.runtime.onMessage.addListener((message: FetchOTPMessage, sender, sendResponse) => {
+// Store active ports for OTP bridge communication
+const activePorts = new Map<number, chrome.runtime.Port>();
+
+// Removed chrome.action.onClicked handler - auto-fill now happens from popup button
+
+// Handle long-lived port connections from bridge content scripts
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'otpBridge') {
+    console.log('[Background] Bridge connected from tab:', port.sender?.tab?.id);
+    
+    if (port.sender?.tab?.id) {
+      activePorts.set(port.sender.tab.id, port);
+      
+      port.onDisconnect.addListener(() => {
+        console.log('[Background] Bridge disconnected from tab:', port.sender?.tab?.id);
+        if (port.sender?.tab?.id) {
+          activePorts.delete(port.sender.tab.id);
+        }
+      });
+    }
+  }
+});
+
+// Handle popup messages
+chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   if (message.action === 'fetchOTP') {
-    // Background only fetches OTP, popup handles auto-fill injection with activeTab permission
+    // Background only fetches OTP, popup handles bridge injection
     otpFetcher.fetchOTPForDomain(message.domain).then(sendResponse);
     return true; // Required to indicate async response
+  }
+  
+  if (message.action === 'sendOTPToBridge') {
+    // Forward OTP to bridge via port
+    console.log('[Background] Forwarding OTP to bridge for tab:', message.tabId);
+    const port = activePorts.get(message.tabId);
+    if (port && message.otp) {
+      console.log('[Background] Sending OTP to bridge via port');
+      port.postMessage({ action: 'fillOTP', otp: message.otp });
+    } else {
+      console.log('[Background] No active port for tab:', message.tabId);
+    }
   }
 });
