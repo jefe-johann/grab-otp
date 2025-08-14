@@ -184,78 +184,15 @@ class GmailOTPFetcher {
     }
   }
 
-  public async fetchOTPWithAutoFill(domain: string, autoFill: boolean): Promise<OTPResponse> {
-    // First, fetch the OTP as usual
-    const otpResponse = await this.fetchOTPForDomain(domain);
-    
-    // If successful and auto-fill is enabled, try to inject and fill
-    if (otpResponse.success && otpResponse.otp && autoFill) {
-      try {
-        await this.injectAndFillOTP(otpResponse.otp);
-      } catch (error) {
-        console.error('Error during auto-fill:', error);
-        // Don't fail the entire operation if auto-fill fails
-        // The user can still copy from popup
-      }
-    }
-    
-    return otpResponse;
-  }
-
-  private async injectAndFillOTP(otp: string): Promise<void> {
-    try {
-      // Get the active tab
-      const [tab] = await new Promise<chrome.tabs.Tab[]>((resolve) => {
-        chrome.tabs.query({ active: true, currentWindow: true }, resolve);
-      });
-
-      if (!tab.id) {
-        throw new Error('No active tab found');
-      }
-
-      // Inject the OTP auto-fill content script
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['otp-autofill.js']
-      });
-
-      // Give the content script a moment to load, then call fillOTP
-      setTimeout(async () => {
-        try {
-          const result = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: async (otpCode: string) => {
-              console.log('[Auto-fill] Attempting to fill OTP:', otpCode);
-              if (typeof (window as any).fillOTP === 'function') {
-                const success = await (window as any).fillOTP(otpCode);
-                console.log('[Auto-fill] Fill result:', success);
-                return { success, error: null };
-              } else {
-                console.log('[Auto-fill] fillOTP function not found');
-                return { success: false, error: 'fillOTP function not available' };
-              }
-            },
-            args: [otp]
-          });
-          console.log('Auto-fill script execution result:', result);
-        } catch (error) {
-          console.error('Error executing auto-fill script:', error);
-        }
-      }, 100); // Small delay to ensure content script is ready
-
-      console.log('OTP auto-fill injection completed');
-    } catch (error) {
-      console.error('Failed to inject OTP auto-fill script:', error);
-      throw error;
-    }
-  }
+  // Simplified: just fetch OTP, let popup handle auto-fill injection
 }
 
 const otpFetcher = new GmailOTPFetcher();
 
 chrome.runtime.onMessage.addListener((message: FetchOTPMessage, sender, sendResponse) => {
   if (message.action === 'fetchOTP') {
-    otpFetcher.fetchOTPWithAutoFill(message.domain, message.autoFill || false).then(sendResponse);
+    // Background only fetches OTP, popup handles auto-fill injection with activeTab permission
+    otpFetcher.fetchOTPForDomain(message.domain).then(sendResponse);
     return true; // Required to indicate async response
   }
 });

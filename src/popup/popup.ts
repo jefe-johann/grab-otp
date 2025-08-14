@@ -120,9 +120,15 @@ class PopupController {
         // Always copy to clipboard
         await this.copyToClipboard(response.otp);
         
-        // Show appropriate success message
+        // Try auto-fill if enabled (do this from popup context for proper activeTab permission)
         if (this.autoFillCheckbox.checked) {
-          this.showStatus(`OTP auto-filled & copied: ${response.otp}`, 'success');
+          try {
+            await this.injectAndFillOTP(response.otp, tab.id!);
+            this.showStatus(`OTP auto-filled & copied: ${response.otp}`, 'success');
+          } catch (error) {
+            console.error('Auto-fill failed:', error);
+            this.showStatus(`OTP copied to clipboard: ${response.otp} (auto-fill failed)`, 'success');
+          }
         } else {
           this.showStatus(`OTP copied to clipboard: ${response.otp}`, 'success');
         }
@@ -158,6 +164,50 @@ class PopupController {
       this.grabButton.textContent = 'Searching...';
     } else {
       this.grabButton.textContent = 'Get OTP from Gmail';
+    }
+  }
+
+  private async injectAndFillOTP(otp: string, tabId: number): Promise<void> {
+    try {
+      console.log('[Popup] Injecting auto-fill script into tab:', tabId);
+      
+      // Inject the OTP auto-fill content script from popup context (has activeTab permission)
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['otp-autofill.js']
+      });
+
+      console.log('[Popup] Content script injected, calling fillOTP function');
+      
+      // Give the content script a moment to load, then call fillOTP
+      setTimeout(async () => {
+        try {
+          const result = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: async (otpCode: string) => {
+              console.log('[Popup->Content] Attempting to fill OTP:', otpCode);
+              if (typeof (window as any).fillOTP === 'function') {
+                const success = await (window as any).fillOTP(otpCode);
+                console.log('[Popup->Content] Fill result:', success);
+                return { success, error: null };
+              } else {
+                console.log('[Popup->Content] fillOTP function not found');
+                return { success: false, error: 'fillOTP function not available' };
+              }
+            },
+            args: [otp]
+          });
+          console.log('[Popup] Auto-fill script execution result:', result);
+        } catch (error) {
+          console.error('[Popup] Error executing auto-fill function:', error);
+          throw error;
+        }
+      }, 100); // Small delay to ensure content script is ready
+
+      console.log('[Popup] Auto-fill injection initiated successfully');
+    } catch (error) {
+      console.error('[Popup] Failed to inject auto-fill script:', error);
+      throw error;
     }
   }
 }
