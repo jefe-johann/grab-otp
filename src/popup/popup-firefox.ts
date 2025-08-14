@@ -1,5 +1,5 @@
 // Firefox popup script - no imports, uses global browser from polyfill
-declare var browser: any;
+declare const browser: any;
 
 interface OTPResponse {
   success: boolean;
@@ -7,22 +7,33 @@ interface OTPResponse {
   error?: string;
 }
 
+interface OTPRequest {
+  action: string;
+  domain: string;
+  autoFill?: boolean;
+  timestamp: number;
+}
+
 class FirefoxPopupController {
   private statusElement: HTMLElement;
   private grabButton: HTMLButtonElement;
   private domainElement: HTMLElement;
+  private autoFillCheckbox: HTMLInputElement;
 
   constructor() {
     this.statusElement = document.getElementById('status')!;
     this.grabButton = document.getElementById('grabOTP') as HTMLButtonElement;
     this.domainElement = document.getElementById('currentDomain')!;
+    this.autoFillCheckbox = document.getElementById('autoFillEnabled') as HTMLInputElement;
     
     this.init();
   }
 
   private async init() {
     await this.displayCurrentDomain();
+    await this.loadAutoFillPreference();
     this.grabButton.addEventListener('click', () => this.handleGrabOTP());
+    this.autoFillCheckbox.addEventListener('change', () => this.saveAutoFillPreference());
     
     // Check for recent OTP results when popup opens
     await this.checkForRecentResults();
@@ -38,6 +49,24 @@ class FirefoxPopupController {
     } catch (error) {
       console.error('Error getting current domain:', error);
       this.domainElement.textContent = 'Unable to detect current site';
+    }
+  }
+
+  private async loadAutoFillPreference() {
+    try {
+      const result = await browser.storage.local.get(['autoFillEnabled']);
+      this.autoFillCheckbox.checked = result.autoFillEnabled ?? true; // Default to true
+    } catch (error) {
+      console.error('Error loading auto-fill preference:', error);
+      this.autoFillCheckbox.checked = true; // Default to true on error
+    }
+  }
+
+  private async saveAutoFillPreference() {
+    try {
+      await browser.storage.local.set({ autoFillEnabled: this.autoFillCheckbox.checked });
+    } catch (error) {
+      console.error('Error saving auto-fill preference:', error);
     }
   }
 
@@ -57,8 +86,9 @@ class FirefoxPopupController {
       browser.runtime.sendMessage({
         action: 'fetchOTP',
         domain: domain,
+        autoFill: this.autoFillCheckbox.checked,
         timestamp: Date.now()
-      });
+      } as OTPRequest);
 
       // Show user that request was sent
       this.showStatus('Request sent! Watch for badge indicator on extension icon.', 'success');

@@ -1,4 +1,4 @@
-declare const browser: typeof import('webextension-polyfill').default;
+// Browser polyfill types declared in types.d.ts
 
 interface OTPResponse {
   success: boolean;
@@ -6,22 +6,32 @@ interface OTPResponse {
   error?: string;
 }
 
+interface OTPRequest {
+  action: string;
+  domain: string;
+  autoFill?: boolean;
+}
+
 class PopupController {
   private statusElement: HTMLElement;
   private grabButton: HTMLButtonElement;
   private domainElement: HTMLElement;
+  private autoFillCheckbox: HTMLInputElement;
 
   constructor() {
     this.statusElement = document.getElementById('status')!;
     this.grabButton = document.getElementById('grabOTP') as HTMLButtonElement;
     this.domainElement = document.getElementById('currentDomain')!;
+    this.autoFillCheckbox = document.getElementById('autoFillEnabled') as HTMLInputElement;
     
     this.init();
   }
 
   private async init() {
     await this.displayCurrentDomain();
+    await this.loadAutoFillPreference();
     this.grabButton.addEventListener('click', () => this.handleGrabOTP());
+    this.autoFillCheckbox.addEventListener('change', () => this.saveAutoFillPreference());
   }
 
   private async displayCurrentDomain() {
@@ -34,6 +44,24 @@ class PopupController {
     } catch (error) {
       console.error('Error getting current domain:', error);
       this.domainElement.textContent = 'Unable to detect current site';
+    }
+  }
+
+  private async loadAutoFillPreference() {
+    try {
+      const result = await browser.storage.local.get(['autoFillEnabled']);
+      this.autoFillCheckbox.checked = result.autoFillEnabled ?? true; // Default to true
+    } catch (error) {
+      console.error('Error loading auto-fill preference:', error);
+      this.autoFillCheckbox.checked = true; // Default to true on error
+    }
+  }
+
+  private async saveAutoFillPreference() {
+    try {
+      await browser.storage.local.set({ autoFillEnabled: this.autoFillCheckbox.checked });
+    } catch (error) {
+      console.error('Error saving auto-fill preference:', error);
     }
   }
 
@@ -51,12 +79,17 @@ class PopupController {
       
       const response = await browser.runtime.sendMessage({
         action: 'fetchOTP',
-        domain: domain
-      }) as OTPResponse;
+        domain: domain,
+        autoFill: this.autoFillCheckbox.checked
+      } as OTPRequest) as OTPResponse;
 
       if (response.success && response.otp) {
-        await this.copyToClipboard(response.otp);
-        this.showStatus(`OTP copied to clipboard: ${response.otp}`, 'success');
+        if (this.autoFillCheckbox.checked) {
+          this.showStatus(`OTP auto-filled: ${response.otp}`, 'success');
+        } else {
+          await this.copyToClipboard(response.otp);
+          this.showStatus(`OTP copied to clipboard: ${response.otp}`, 'success');
+        }
       } else {
         this.showStatus(response.error || 'No OTP found in recent emails', 'error');
       }

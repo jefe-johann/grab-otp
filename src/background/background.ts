@@ -3,6 +3,7 @@
 interface FetchOTPMessage {
   action: 'fetchOTP';
   domain: string;
+  autoFill?: boolean;
 }
 
 interface OTPResponse {
@@ -182,13 +183,64 @@ class GmailOTPFetcher {
       return '';
     }
   }
+
+  public async fetchOTPWithAutoFill(domain: string, autoFill: boolean): Promise<OTPResponse> {
+    // First, fetch the OTP as usual
+    const otpResponse = await this.fetchOTPForDomain(domain);
+    
+    // If successful and auto-fill is enabled, try to inject and fill
+    if (otpResponse.success && otpResponse.otp && autoFill) {
+      try {
+        await this.injectAndFillOTP(otpResponse.otp);
+      } catch (error) {
+        console.error('Error during auto-fill:', error);
+        // Don't fail the entire operation if auto-fill fails
+        // The user can still copy from popup
+      }
+    }
+    
+    return otpResponse;
+  }
+
+  private async injectAndFillOTP(otp: string): Promise<void> {
+    try {
+      // Get the active tab
+      const [tab] = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+        chrome.tabs.query({ active: true, currentWindow: true }, resolve);
+      });
+
+      if (!tab.id) {
+        throw new Error('No active tab found');
+      }
+
+      // Inject the OTP auto-fill content script
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['otp-autofill.js']
+      });
+
+      // Call the fillOTP function
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (otpCode: string) => {
+          return (window as any).fillOTP?.(otpCode);
+        },
+        args: [otp]
+      });
+
+      console.log('OTP auto-fill injection completed');
+    } catch (error) {
+      console.error('Failed to inject OTP auto-fill script:', error);
+      throw error;
+    }
+  }
 }
 
 const otpFetcher = new GmailOTPFetcher();
 
 chrome.runtime.onMessage.addListener((message: FetchOTPMessage, sender, sendResponse) => {
   if (message.action === 'fetchOTP') {
-    otpFetcher.fetchOTPForDomain(message.domain).then(sendResponse);
+    otpFetcher.fetchOTPWithAutoFill(message.domain, message.autoFill || false).then(sendResponse);
     return true; // Required to indicate async response
   }
 });

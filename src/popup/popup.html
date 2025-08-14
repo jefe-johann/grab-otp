@@ -72,6 +72,29 @@
       text-align: center;
       margin-top: 8px;
     }
+    
+    .settings {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #eee;
+    }
+    
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    
+    .checkbox-container input[type="checkbox"] {
+      margin-right: 8px;
+      cursor: pointer;
+    }
+    
+    .checkbox-label {
+      color: #333;
+      user-select: none;
+    }
   </style>
 </head>
 <body>
@@ -86,6 +109,13 @@
   </button>
   
   <div id="currentDomain" class="current-domain"></div>
+  
+  <div class="settings">
+    <label class="checkbox-container">
+      <input type="checkbox" id="autoFillEnabled">
+      <span class="checkbox-label">Auto-fill OTP code</span>
+    </label>
+  </div>
   
   <script src="browser-polyfill.js"></script>
   <script src="popup.js"></script>

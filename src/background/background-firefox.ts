@@ -1,10 +1,11 @@
 // Firefox background script - uses global browser from polyfill
-declare var browser: any;
-declare var __FIREFOX_CLIENT_ID__: string;
+declare const browser: any;
+declare const __FIREFOX_CLIENT_ID__: string;
 
 interface FetchOTPMessage {
   action: 'fetchOTP';
   domain: string;
+  autoFill?: boolean;
   timestamp: number;
 }
 
@@ -49,24 +50,44 @@ class FirefoxGmailOTPFetcher {
   ];
 
   // Fire-and-forget OTP fetch with full background processing
-  async processOTPRequest(domain: string, requestTimestamp: number): Promise<void> {
-    console.log(`Starting OTP fetch for domain: ${domain}`);
+  async processOTPRequest(domain: string, requestTimestamp: number, autoFill: boolean = false): Promise<void> {
+    console.log(`Starting OTP fetch for domain: ${domain}, autoFill: ${autoFill}`);
     
     try {
       const result = await this.fetchOTPForDomain(domain);
       
       if (result.success && result.otp) {
-        // Copy to clipboard
-        await this.copyToClipboard(result.otp);
-        
-        // Show popup with OTP result
-        console.log('OTP found, showing popup result');
-        await this.showPopupWithResult({
-          success: true,
-          otp: result.otp,
-          domain: domain,
-          message: `OTP: ${result.otp} (copied to clipboard)`
-        });
+        if (autoFill) {
+          // Try auto-fill first
+          try {
+            await this.injectAndFillOTP(result.otp);
+            await this.showPopupWithResult({
+              success: true,
+              otp: result.otp,
+              domain: domain,
+              message: `OTP: ${result.otp} (auto-filled)`
+            });
+          } catch (error) {
+            console.error('Auto-fill failed, falling back to clipboard:', error);
+            // Fall back to clipboard if auto-fill fails
+            await this.copyToClipboard(result.otp);
+            await this.showPopupWithResult({
+              success: true,
+              otp: result.otp,
+              domain: domain,
+              message: `OTP: ${result.otp} (copied to clipboard - auto-fill failed)`
+            });
+          }
+        } else {
+          // Copy to clipboard (original behavior)
+          await this.copyToClipboard(result.otp);
+          await this.showPopupWithResult({
+            success: true,
+            otp: result.otp,
+            domain: domain,
+            message: `OTP: ${result.otp} (copied to clipboard)`
+          });
+        }
         
         
         console.log('OTP found and copied successfully');
@@ -392,6 +413,57 @@ class FirefoxGmailOTPFetcher {
       return '';
     }
   }
+
+  private async injectAndFillOTP(otp: string): Promise<void> {
+    try {
+      console.log('Attempting to inject and fill OTP:', otp);
+      
+      // Get the active tab
+      const results = await browser.tabs.query({active: true, currentWindow: true});
+      if (results.length === 0 || !results[0].id) {
+        throw new Error('No active tab found for auto-fill');
+      }
+
+      const tabId = results[0].id;
+
+      // Inject the OTP auto-fill content script
+      await browser.tabs.executeScript(tabId, {
+        file: 'otp-autofill.js'
+      });
+
+      // Call the fillOTP function
+      const fillResult = await browser.tabs.executeScript(tabId, {
+        code: `
+          (function() {
+            const otpCode = '${otp.replace(/[\\'"`]/g, '')}'; // Sanitize
+            
+            // Validate OTP format
+            if (!/^\\d{4,8}$/.test(otpCode)) {
+              return { success: false, error: 'invalid_format' };
+            }
+            
+            if (typeof window.fillOTP === 'function') {
+              return window.fillOTP(otpCode).then(success => ({ success }));
+            } else {
+              return { success: false, error: 'fillOTP_function_not_available' };
+            }
+          })();
+        `
+      });
+
+      console.log('OTP auto-fill injection result:', fillResult);
+      
+      // Check if the result indicates success
+      if (!fillResult || !fillResult[0]?.success) {
+        throw new Error('Auto-fill function returned false or failed');
+      }
+
+      console.log('OTP auto-fill completed successfully');
+    } catch (error) {
+      console.error('Failed to inject and fill OTP:', error);
+      throw error;
+    }
+  }
 }
 
 const firefoxOtpFetcher = new FirefoxGmailOTPFetcher();
@@ -400,7 +472,7 @@ const firefoxOtpFetcher = new FirefoxGmailOTPFetcher();
 browser.runtime.onMessage.addListener((message: FetchOTPMessage) => {
   if (message.action === 'fetchOTP') {
     // Process in background without blocking the message response
-    firefoxOtpFetcher.processOTPRequest(message.domain, message.timestamp);
+    firefoxOtpFetcher.processOTPRequest(message.domain, message.timestamp, message.autoFill || false);
     // Return immediately (no response needed)
     return;
   }

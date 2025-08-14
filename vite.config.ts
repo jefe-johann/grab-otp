@@ -13,7 +13,8 @@ export default defineConfig({
           : resolve(__dirname, 'src/background/background.ts'),
         popup: isFirefox
           ? resolve(__dirname, 'src/popup/popup-firefox.ts')
-          : resolve(__dirname, 'src/popup/popup.ts')
+          : resolve(__dirname, 'src/popup/popup.ts'),
+        'otp-autofill': resolve(__dirname, 'src/content/otp-autofill.ts')
       },
       output: {
         entryFileNames: '[name].js',
