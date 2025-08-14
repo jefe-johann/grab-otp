@@ -58,17 +58,27 @@ class OTPAutoFiller {
       console.log('[OTP AutoFill] Found', candidates.length, 'OTP input candidates');
       
       if (candidates.length === 0) {
-        console.log('[OTP AutoFill] No OTP input fields detected');
+        console.log('[OTP AutoFill] No OTP input fields detected on page:', window.location.href);
+        console.log('[OTP AutoFill] Available inputs on page:', document.querySelectorAll('input').length);
         return false;
       }
       
       // Sort by confidence and try to fill
       candidates.sort((a, b) => b.confidence - a.confidence);
       
+      console.log('[OTP AutoFill] Top candidates:', candidates.map(c => ({
+        element: c.element.tagName + (c.element.id ? '#' + c.element.id : '') + (c.element.className ? '.' + c.element.className.split(' ')[0] : ''),
+        confidence: c.confidence,
+        type: c.type
+      })));
+      
       for (const candidate of candidates) {
+        console.log('[OTP AutoFill] Trying to fill candidate:', candidate.element);
         if (await this.tryFillInput(candidate, otpCode)) {
           console.log('[OTP AutoFill] Successfully filled OTP input');
           return true;
+        } else {
+          console.log('[OTP AutoFill] Failed to fill candidate');
         }
       }
       

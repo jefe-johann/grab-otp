@@ -219,14 +219,29 @@ class GmailOTPFetcher {
         files: ['otp-autofill.js']
       });
 
-      // Call the fillOTP function
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (otpCode: string) => {
-          return (window as any).fillOTP?.(otpCode);
-        },
-        args: [otp]
-      });
+      // Give the content script a moment to load, then call fillOTP
+      setTimeout(async () => {
+        try {
+          const result = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: async (otpCode: string) => {
+              console.log('[Auto-fill] Attempting to fill OTP:', otpCode);
+              if (typeof (window as any).fillOTP === 'function') {
+                const success = await (window as any).fillOTP(otpCode);
+                console.log('[Auto-fill] Fill result:', success);
+                return { success, error: null };
+              } else {
+                console.log('[Auto-fill] fillOTP function not found');
+                return { success: false, error: 'fillOTP function not available' };
+              }
+            },
+            args: [otp]
+          });
+          console.log('Auto-fill script execution result:', result);
+        } catch (error) {
+          console.error('Error executing auto-fill script:', error);
+        }
+      }, 100); // Small delay to ensure content script is ready
 
       console.log('OTP auto-fill injection completed');
     } catch (error) {

@@ -84,10 +84,13 @@ class PopupController {
       } as OTPRequest) as OTPResponse;
 
       if (response.success && response.otp) {
+        // Always copy to clipboard
+        await this.copyToClipboard(response.otp);
+        
+        // Show appropriate success message
         if (this.autoFillCheckbox.checked) {
-          this.showStatus(`OTP auto-filled: ${response.otp}`, 'success');
+          this.showStatus(`OTP auto-filled & copied: ${response.otp}`, 'success');
         } else {
-          await this.copyToClipboard(response.otp);
           this.showStatus(`OTP copied to clipboard: ${response.otp}`, 'success');
         }
       } else {
