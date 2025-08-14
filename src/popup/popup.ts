@@ -39,14 +39,26 @@ class PopupController {
       console.log('Attempting to get current tab...');
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       console.log('Tab result:', tab);
+      console.log('Tab properties:', {
+        id: tab?.id,
+        url: tab?.url,
+        title: tab?.title,
+        active: tab?.active,
+        pendingUrl: tab?.pendingUrl
+      });
       
       if (tab?.url) {
         const domain = new URL(tab.url).hostname;
         this.domainElement.textContent = `Current site: ${domain}`;
         console.log('Domain detected:', domain);
+      } else if (tab?.pendingUrl) {
+        const domain = new URL(tab.pendingUrl).hostname;
+        this.domainElement.textContent = `Current site: ${domain}`;
+        console.log('Domain detected from pendingUrl:', domain);
       } else {
-        console.log('Tab found but no URL available');
-        this.domainElement.textContent = 'No active tab URL available';
+        console.log('Tab found but no URL or pendingUrl available');
+        console.log('Available tab keys:', Object.keys(tab || {}));
+        this.domainElement.textContent = 'Click "Get OTP" to detect current site';
       }
     } catch (error) {
       console.error('Error getting current domain:', error);
@@ -77,15 +89,25 @@ class PopupController {
     this.showStatus('Searching Gmail for OTP...', 'loading');
 
     try {
-      console.log('Getting tab for OTP fetch...');
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      console.log('Tab for OTP fetch:', tab);
+      console.log('Getting tab for OTP fetch (user interaction should grant activeTab)...');
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
       
-      if (!tab?.url) {
-        throw new Error('Unable to get current tab URL');
+      console.log('Tab for OTP fetch:', tab);
+      console.log('Tab properties for OTP:', {
+        id: tab?.id,
+        url: tab?.url,
+        title: tab?.title,
+        pendingUrl: tab?.pendingUrl
+      });
+      
+      const tabUrl = tab?.url || tab?.pendingUrl;
+      if (!tabUrl) {
+        console.error('No URL available in tab object:', Object.keys(tab || {}));
+        throw new Error('Unable to get current tab URL - activeTab permission may not be granted');
       }
 
-      const domain = new URL(tab.url).hostname;
+      const domain = new URL(tabUrl).hostname;
       console.log('Using domain for OTP search:', domain);
       
       const response = await chrome.runtime.sendMessage({
