@@ -58,11 +58,12 @@ export default defineConfig({
         
         writeFileSync(resolve(distDir, 'manifest.json'), manifestContent);
         
-        // Copy popup HTML
-        copyFileSync(
-          resolve(__dirname, 'src/popup/popup.html'), 
-          resolve(distDir, 'popup.html')
-        );
+        // Copy appropriate popup HTML for each browser
+        const popupHtmlSrc = isFirefox 
+          ? resolve(__dirname, 'src/popup/popup.html')  // Firefox uses polyfill
+          : resolve(__dirname, 'src/popup/popup-chrome.html');  // Chrome uses native APIs
+        
+        copyFileSync(popupHtmlSrc, resolve(distDir, 'popup.html'));
         
         // Create icons directory and copy icons
         const iconsDir = resolve(distDir, 'icons');

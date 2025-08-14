@@ -36,10 +36,17 @@ class PopupController {
 
   private async displayCurrentDomain() {
     try {
+      console.log('Attempting to get current tab...');
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      console.log('Tab result:', tab);
+      
       if (tab?.url) {
         const domain = new URL(tab.url).hostname;
         this.domainElement.textContent = `Current site: ${domain}`;
+        console.log('Domain detected:', domain);
+      } else {
+        console.log('Tab found but no URL available');
+        this.domainElement.textContent = 'No active tab URL available';
       }
     } catch (error) {
       console.error('Error getting current domain:', error);
@@ -70,12 +77,16 @@ class PopupController {
     this.showStatus('Searching Gmail for OTP...', 'loading');
 
     try {
+      console.log('Getting tab for OTP fetch...');
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      console.log('Tab for OTP fetch:', tab);
+      
       if (!tab?.url) {
         throw new Error('Unable to get current tab URL');
       }
 
       const domain = new URL(tab.url).hostname;
+      console.log('Using domain for OTP search:', domain);
       
       const response = await chrome.runtime.sendMessage({
         action: 'fetchOTP',
