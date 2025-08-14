@@ -1,0 +1,37 @@
+{
+  "name": "grab-otp-extension",
+  "version": "1.0.0",
+  "description": "Browser extension to automatically retrieve OTP codes from Gmail",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "npm run build:chrome && npm run build:firefox",
+    "build:chrome": "vite build --mode production --outDir dist/chrome",
+    "build:firefox": "TARGET=firefox vite build --mode production --outDir dist/firefox",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "@types/webextension-polyfill": "^0.10.7",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.1.0",
+    "vitest": "^1.3.0"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.10.0"
+  },
+  "keywords": [
+    "browser-extension",
+    "otp",
+    "gmail",
+    "authentication",
+    "webextension"
+  ],
+  "author": "",
+  "license": "MIT"
+}
