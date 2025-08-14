@@ -83,6 +83,22 @@ class OTPAutoFiller {
       }
       
       console.log('[OTP AutoFill] Could not fill any detected inputs');
+      
+      // Fallback: try to fill any visible input field for debugging
+      console.log('[OTP AutoFill] Trying fallback: fill any visible input field');
+      const allInputs = document.querySelectorAll('input[type="text"], input[type="number"], input:not([type])') as NodeListOf<HTMLInputElement>;
+      for (const input of allInputs) {
+        if (input.offsetParent !== null && !input.disabled && !input.readOnly) { // visible and editable
+          console.log('[OTP AutoFill] Fallback attempting to fill:', input);
+          input.value = otpCode;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.focus();
+          console.log('[OTP AutoFill] Fallback filled input successfully');
+          return true;
+        }
+      }
+      
       return false;
     } catch (error) {
       console.error('[OTP AutoFill] Error during auto-fill:', error);
