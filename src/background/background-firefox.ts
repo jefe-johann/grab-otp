@@ -615,71 +615,29 @@ browser.runtime.onMessage.addListener(async (message: any, sender: any, sendResp
   }
 });
 
-// Feature detection for injection API
+// Feature detection for injection API with separate bridge file
 async function injectBridgeScript(tabId: number): Promise<void> {
-  const bridgeCode = `
-    // Firefox OTP Bridge Content Script
-    console.log('[Firefox OTP Bridge] Loading on:', window.location.href);
-    
-    // Establish connection to background
-    const port = browser.runtime.connect({ name: 'firefoxOtpBridge' });
-    
-    port.onMessage.addListener((message) => {
-      if (message.action === 'fillOTP' && message.otp) {
-        fillOTPCode(message.otp);
-      }
-    });
-    
-    // Enhanced OTP filling function
-    async function fillOTPCode(otpCode) {
-      console.log('[Firefox OTP Bridge] Filling OTP (' + otpCode.length + ' digits)');
-      
-      const selectors = [
-        'input[autocomplete="one-time-code"]',
-        'input[inputmode="numeric"]', 
-        'input[type="text"]',
-        'input[type="number"]',
-        'input:not([type])'
-      ];
-      
-      for (const selector of selectors) {
-        const inputs = document.querySelectorAll(selector);
-        
-        for (const input of inputs) {
-          if (input.offsetParent !== null && !input.disabled && !input.readOnly) {
-            // Enhanced filling with proper events for React/Vue
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            nativeInputValueSetter.call(input, otpCode);
-            
-            // Dispatch events that modern frameworks expect
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            input.dispatchEvent(new Event('keyup', { bubbles: true }));
-            input.focus();
-            
-            console.log('[Firefox OTP Bridge] OTP filled successfully');
-            port.postMessage({ action: 'fillResult', success: true });
-            return;
-          }
-        }
-      }
-      
-      console.log('[Firefox OTP Bridge] No suitable input found');
-      port.postMessage({ action: 'fillResult', success: false });
+  // Validate tab permissions before injection
+  try {
+    const tab = await browser.tabs.get(tabId);
+    if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('moz-extension://')) {
+      throw new Error('Cannot inject into system pages');
     }
-  `;
+  } catch (error) {
+    throw new Error('Invalid tab or insufficient permissions');
+  }
   
   // Feature detection: prefer scripting API, fallback to tabs
   if (browser.scripting && browser.scripting.executeScript) {
     console.log('[Firefox Background] Using modern scripting API');
     await browser.scripting.executeScript({
       target: { tabId: tabId, allFrames: true },
-      func: new Function(bridgeCode)
+      files: ['otp-bridge-firefox.js']
     });
   } else if (browser.tabs && browser.tabs.executeScript) {
     console.log('[Firefox Background] Using legacy tabs API'); 
     await browser.tabs.executeScript(tabId, {
-      code: bridgeCode,
+      file: 'otp-bridge-firefox.js',
       allFrames: true
     });
   } else {

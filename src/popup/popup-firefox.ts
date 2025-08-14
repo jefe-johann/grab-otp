@@ -20,6 +20,7 @@ class FirefoxPopupController {
   private grabButton: HTMLButtonElement;
   private domainElement: HTMLElement;
   private autoFillCheckbox: HTMLInputElement;
+  private resultPollingInterval: number | null = null;
 
   constructor() {
     this.statusElement = document.getElementById('status')!;
@@ -115,13 +116,14 @@ class FirefoxPopupController {
         timestamp: Date.now()
       } as OTPRequest);
 
-      // Request sent, keep loading state until result arrives via badge system
+      // Request sent, keep loading state and start polling for results
+      this.startResultPolling();
       
     } catch (error) {
       console.error('Error sending OTP request:', error);
       this.showStatus('Error: ' + (error as Error).message, 'error');
-    } finally {
-      this.setLoading(false);
+      this.setLoading(false); // Only stop loading on error
+      this.stopResultPolling();
     }
   }
 
@@ -139,6 +141,10 @@ class FirefoxPopupController {
           this.showStatus(`❌ ${latestResult.message}`, 'error');
         }
         
+        // Stop loading state and polling when result is shown
+        this.setLoading(false);
+        this.stopResultPolling();
+        
         // Clear the result and badge after showing it
         await browser.storage.local.remove('latest_otp_result');
         await this.clearBadge();
@@ -154,6 +160,25 @@ class FirefoxPopupController {
       await browser.browserAction.setTitle({ title: 'Grab OTP from Gmail' });
     } catch (error) {
       console.log('Could not clear badge:', error);
+    }
+  }
+
+  private startResultPolling() {
+    // Poll every 500ms for results while loading
+    this.resultPollingInterval = window.setInterval(async () => {
+      await this.checkForRecentResults();
+    }, 500);
+    
+    // Stop polling after 30 seconds to avoid infinite polling
+    setTimeout(() => {
+      this.stopResultPolling();
+    }, 30000);
+  }
+
+  private stopResultPolling() {
+    if (this.resultPollingInterval) {
+      clearInterval(this.resultPollingInterval);
+      this.resultPollingInterval = null;
     }
   }
 

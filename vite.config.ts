@@ -14,7 +14,10 @@ export default defineConfig({
         popup: isFirefox
           ? resolve(__dirname, 'src/popup/popup-firefox.ts')
           : resolve(__dirname, 'src/popup/popup.ts'),
-        'otp-bridge': resolve(__dirname, 'src/content/otp-bridge.ts')
+        'otp-bridge': resolve(__dirname, 'src/content/otp-bridge.ts'),
+        'otp-bridge-firefox': isFirefox 
+          ? resolve(__dirname, 'src/content/otp-bridge-firefox.ts')
+          : resolve(__dirname, 'src/content/otp-bridge.ts')
       },
       output: {
         entryFileNames: '[name].js',
