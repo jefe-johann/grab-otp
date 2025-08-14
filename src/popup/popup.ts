@@ -36,7 +36,7 @@ class PopupController {
 
   private async displayCurrentDomain() {
     try {
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.url) {
         const domain = new URL(tab.url).hostname;
         this.domainElement.textContent = `Current site: ${domain}`;
@@ -49,7 +49,7 @@ class PopupController {
 
   private async loadAutoFillPreference() {
     try {
-      const result = await browser.storage.local.get(['autoFillEnabled']);
+      const result = await chrome.storage.local.get(['autoFillEnabled']);
       this.autoFillCheckbox.checked = result.autoFillEnabled ?? true; // Default to true
     } catch (error) {
       console.error('Error loading auto-fill preference:', error);
@@ -59,7 +59,7 @@ class PopupController {
 
   private async saveAutoFillPreference() {
     try {
-      await browser.storage.local.set({ autoFillEnabled: this.autoFillCheckbox.checked });
+      await chrome.storage.local.set({ autoFillEnabled: this.autoFillCheckbox.checked });
     } catch (error) {
       console.error('Error saving auto-fill preference:', error);
     }
@@ -70,14 +70,14 @@ class PopupController {
     this.showStatus('Searching Gmail for OTP...', 'loading');
 
     try {
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.url) {
         throw new Error('Unable to get current tab URL');
       }
 
       const domain = new URL(tab.url).hostname;
       
-      const response = await browser.runtime.sendMessage({
+      const response = await chrome.runtime.sendMessage({
         action: 'fetchOTP',
         domain: domain,
         autoFill: this.autoFillCheckbox.checked
