@@ -115,12 +115,7 @@ class FirefoxPopupController {
         timestamp: Date.now()
       } as OTPRequest);
 
-      // Show user that request was sent - Firefox uses badge system
-      if (this.autoFillCheckbox.checked) {
-        this.showStatus('Request sent! OTP will auto-fill when ready. Watch extension badge.', 'success');
-      } else {
-        this.showStatus('Request sent! OTP will be copied to clipboard. Watch extension badge.', 'success');  
-      }
+      // Request sent, keep loading state until result arrives via badge system
       
     } catch (error) {
       console.error('Error sending OTP request:', error);

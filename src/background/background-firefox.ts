@@ -64,11 +64,15 @@ class FirefoxGmailOTPFetcher {
           if (port) {
             console.log('[Firefox Background] Sending OTP to bridge for auto-fill');
             port.postMessage({ action: 'fillOTP', otp: result.otp });
+            
+            // Always copy to clipboard as backup, even when auto-filling
+            await this.copyToClipboard(result.otp);
+            
             await this.showPopupWithResult({
               success: true,
               otp: result.otp,
               domain: domain,
-              message: `OTP: ${result.otp} (auto-filled)`
+              message: `OTP: ${result.otp} (auto-filled & copied)`
             });
           } else {
             console.log('[Firefox Background] No bridge port found, falling back to clipboard');
