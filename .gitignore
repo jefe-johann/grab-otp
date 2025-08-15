@@ -6,10 +6,10 @@ npm-debug.log*
 dist/
 build/
 
-# Environment variables (contains sensitive data)
+# OAuth secrets and sensitive configuration
+OAuth-client-secret.json
 .env
-.env.local
-.env.production
+.env.*
 
 # OS generated files
 .DS_Store
@@ -27,3 +27,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+temp-extract/
+
+# Development artifacts
+grab-otp-firefox.zip
