@@ -145,9 +145,9 @@ class FirefoxPopupController {
         this.setLoading(false);
         this.stopResultPolling();
         
-        // Clear the result and badge after showing it
+        // Clear the result after showing it (badge clearing disabled)
         await browser.storage.local.remove('latest_otp_result');
-        await this.clearBadge();
+        // await this.clearBadge(); // Disabled - no badges set anymore
       }
     } catch (error) {
       console.log('Could not check recent results:', error);

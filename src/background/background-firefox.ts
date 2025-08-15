@@ -239,26 +239,26 @@ class FirefoxGmailOTPFetcher {
         }
       });
       
-      // Update browser action badge to indicate result is ready
-      if (result.success) {
-        await browser.browserAction.setBadgeText({ text: '✓' });
-        await browser.browserAction.setBadgeBackgroundColor({ color: '#4CAF50' });
-        await browser.browserAction.setTitle({ 
-          title: `OTP Ready: ${result.otp} (click to view)` 
-        });
-      } else {
-        await browser.browserAction.setBadgeText({ text: '✗' });
-        await browser.browserAction.setBadgeBackgroundColor({ color: '#F44336' });
-        await browser.browserAction.setTitle({ 
-          title: 'OTP Error (click to view)' 
-        });
-      }
+      // Badge notifications disabled - auto-fill + popup polling provides immediate feedback
+      // if (result.success) {
+      //   await browser.browserAction.setBadgeText({ text: '✓' });
+      //   await browser.browserAction.setBadgeBackgroundColor({ color: '#4CAF50' });
+      //   await browser.browserAction.setTitle({ 
+      //     title: `OTP Ready: ${result.otp} (click to view)` 
+      //   });
+      // } else {
+      //   await browser.browserAction.setBadgeText({ text: '✗' });
+      //   await browser.browserAction.setBadgeBackgroundColor({ color: '#F44336' });
+      //   await browser.browserAction.setTitle({ 
+      //     title: 'OTP Error (click to view)' 
+      //   });
+      // }
       
-      console.log('Badge updated, user can click extension icon');
+      console.log('Result stored for popup polling');
     } catch (error) {
-      console.error('Failed to update badge:', error);
+      console.error('Failed to store result:', error);
       
-      // Fallback: just store the result
+      // Fallback: try to store without badge updates
       try {
         await browser.storage.local.set({
           'latest_otp_result': {
@@ -266,9 +266,9 @@ class FirefoxGmailOTPFetcher {
             timestamp: Date.now()
           }
         });
-        console.log('Result stored, user can manually open popup');
+        console.log('Result stored via fallback');
       } catch (storageError) {
-        console.error('Failed to store result:', storageError);
+        console.error('Complete storage failure:', storageError);
       }
     }
   }
