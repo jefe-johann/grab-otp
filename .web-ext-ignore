@@ -1,0 +1,59 @@
+# Web-ext ignore file
+# Excludes development files from Firefox extension package
+
+# Documentation and development notes
+*.md
+CLAUDE.md
+AUTO_FILL_DEBUGGING.md
+FIREFOX_SUBMISSION_NOTES.md
+IMPROVEMENTS.md
+INSTALLATION.md
+OAUTH_SETUP.md
+OAuth-Firefox-Research.md
+PRIVACY_POLICY.md
+RELEASE_CHECKLIST.md
+SECURITY_FIXES.md
+SCALING_PLAN.md
+project-overview.md
+
+# OAuth secrets and configuration
+OAuth-client-secret.json
+.env
+.env.*
+
+# Source code (only built files needed)
+src/
+tsconfig.json
+vite.config.ts
+
+# Build dependencies and tools
+node_modules/
+package.json
+package-lock.json
+create-icons.js
+
+# Build artifacts and temp files
+build/
+web-ext-artifacts/
+temp-extract/
+*.zip
+
+# Design files and assets
+images/
+*.psd
+*.svg
+
+# Development tools
+.git/
+.gitignore
+.web-ext-ignore
+
+# IDE and system files
+.vscode/
+.DS_Store
+*.log
+*.tmp
+
+# Previous builds
+grab-otp-firefox.zip
+dist/chrome/
