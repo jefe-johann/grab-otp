@@ -11,6 +11,9 @@ OAuth-client-secret.json
 .env
 .env.*
 
+# Private development documentation (backed up externally via build script)
+docs/private/
+
 # OS generated files
 .DS_Store
 Thumbs.db

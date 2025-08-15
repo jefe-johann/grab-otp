@@ -4,8 +4,9 @@
   "description": "Browser extension to automatically retrieve OTP codes from Gmail",
   "type": "module",
   "scripts": {
+    "backup-docs": "node scripts/backup-docs.js",
     "dev": "vite build --watch --mode development",
-    "build": "npm run build:chrome && npm run build:firefox",
+    "build": "npm run backup-docs && npm run build:chrome && npm run build:firefox",
     "build:chrome": "vite build --mode production --outDir dist/chrome",
     "build:firefox": "TARGET=firefox vite build --mode production --outDir dist/firefox",
     "typecheck": "tsc --noEmit",

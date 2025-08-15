@@ -1,20 +1,9 @@
 # Web-ext ignore file
 # Excludes development files from Firefox extension package
 
-# Documentation and development notes
+# Documentation and development notes  
+docs/
 *.md
-CLAUDE.md
-AUTO_FILL_DEBUGGING.md
-FIREFOX_SUBMISSION_NOTES.md
-IMPROVEMENTS.md
-INSTALLATION.md
-OAUTH_SETUP.md
-OAuth-Firefox-Research.md
-PRIVACY_POLICY.md
-RELEASE_CHECKLIST.md
-SECURITY_FIXES.md
-SCALING_PLAN.md
-project-overview.md
 
 # OAuth secrets and configuration
 OAuth-client-secret.json
@@ -31,6 +20,7 @@ node_modules/
 package.json
 package-lock.json
 create-icons.js
+scripts/
 
 # Build artifacts and temp files
 build/
