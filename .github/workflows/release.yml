@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run type checking
+      run: npm run typecheck
+      
+    - name: Build Chrome extension
+      run: npm run build:chrome
+      
+    - name: Build Firefox extension
+      run: npm run build:firefox
+      
+    - name: Create Chrome extension package
+      run: |
+        cd dist/chrome
+        zip -r ../../grab-otp-chrome-${{ github.ref_name }}.zip .
+        cd ../..
+        
+    - name: Create Firefox extension package  
+      run: |
+        cd dist/firefox
+        zip -r ../../grab-otp-firefox-${{ github.ref_name }}.zip .
+        cd ../..
+        
+    - name: Generate changelog
+      id: changelog
+      run: |
+        echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+        if [ -f CHANGELOG.md ]; then
+          awk "/^## \[${{ github.ref_name }}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md
+        else
+          echo "Release ${{ github.ref_name }}"
+          echo ""
+          echo "### Changes"
+          echo "- Bug fixes and improvements"
+        fi >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body: |
+          # Grab OTP ${{ github.ref_name }}
+          
+          Cross-browser extension for automatically retrieving OTP codes from Gmail.
+          
+          ## Downloads
+          - **Chrome**: Download `grab-otp-chrome-${{ github.ref_name }}.zip`
+          - **Firefox**: Download `grab-otp-firefox-${{ github.ref_name }}.zip`
+          
+          ## Installation
+          1. Download the appropriate ZIP file for your browser
+          2. Unzip the extension files
+          3. Load as unpacked extension in developer mode
+          
+          ## Changes
+          ${{ steps.changelog.outputs.CHANGELOG }}
+          
+          ---
+          
+          **Note**: Store versions pending review. Manual installation available above.
+        files: |
+          grab-otp-chrome-${{ github.ref_name }}.zip
+          grab-otp-firefox-${{ github.ref_name }}.zip
+        draft: false
+        prerelease: false

@@ -1,0 +1,21 @@
+name: "Grab OTP CodeQL Config"
+
+disable-default-queries: false
+
+queries:
+  - uses: security-and-quality
+  - uses: security-extended
+
+query-filters:
+  - exclude:
+      id: js/unused-local-variable
+      
+paths-ignore:
+  - node_modules/**
+  - dist/**
+  - build/**
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+
+paths:
+  - src/**

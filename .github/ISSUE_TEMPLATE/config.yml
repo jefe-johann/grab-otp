@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Privacy & Security Questions
+    url: https://github.com/jefe-johann/grab-otp/blob/master/PRIVACY_POLICY.md
+    about: Questions about data privacy and security practices
+  - name: Firefox Add-on Store
+    url: https://addons.mozilla.org/
+    about: Issues specific to Firefox store version (when available)
+  - name: Chrome Web Store  
+    url: https://chrome.google.com/webstore/
+    about: Issues specific to Chrome store version (when available)
