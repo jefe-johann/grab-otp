@@ -20,16 +20,43 @@ A cross-browser WebExtension that automatically retrieves OTP codes from Gmail b
 
 ## Installation
 
-### Chrome Web Store
-*Coming soon - under review*
+### From Source (Recommended)
 
-### Firefox Add-ons
-*Coming soon - under review*
+**Prerequisites:**
+- Node.js 18+ (Node.js 22 LTS recommended)
+- npm (comes with Node.js)
 
-### Manual Installation
-1. Download the latest release
+**Build Steps:**
+```bash
+# Clone the repository
+git clone https://github.com/jefe-johann/grab-otp.git
+cd grab-otp
+
+# Install dependencies
+npm install
+
+# Build for your browser
+npm run build:chrome   # For Chrome/Edge/Brave
+npm run build:firefox  # For Firefox
+```
+
+**Loading in Chrome:**
+1. Open `chrome://extensions/`
+2. Enable "Developer mode" (toggle in top-right)
+3. Click "Load unpacked"
+4. Select the `dist/chrome` directory
+
+**Loading in Firefox:**
+1. Open `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on"
+3. Navigate to `dist/firefox` and select `manifest.json`
+
+**Note:** Firefox temporary extensions are removed when the browser closes. For persistent installation, use `web-ext` to create a signed `.xpi` file.
+
+### From GitHub Releases
+1. Download the latest release from [Releases](https://github.com/jefe-johann/grab-otp/releases)
 2. Unzip the extension files
-3. Load as unpacked extension in developer mode
+3. Follow the browser-specific loading instructions above
 
 ## Privacy & Security
 
@@ -51,19 +78,38 @@ See [Privacy Policy](PRIVACY_POLICY.md) for full details.
 
 ## Development
 
+**Environment Setup:**
 ```bash
 # Install dependencies
 npm install
 
-# Build for Chrome
-npm run build:chrome
+# Build commands
+npm run build         # Build both Chrome and Firefox versions
+npm run build:chrome  # Build Chrome version only
+npm run build:firefox # Build Firefox version only
 
-# Build for Firefox  
-npm run build:firefox
+# Development
+npm run dev          # Watch mode for development
 
-# Type checking
-npm run typecheck
+# Quality checks
+npm run typecheck    # TypeScript type checking
+npm run lint         # ESLint code linting
+npm run test         # Run test suite
 ```
+
+**OAuth Setup:**
+For full functionality, you'll need to set up OAuth credentials:
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the Gmail API
+3. Create OAuth 2.0 credentials (Web application)
+4. Set authorized redirect URIs based on your browser extension ID
+5. Update manifest files with your client IDs
+
+**Project Structure:**
+- `src/` - TypeScript source code
+- `dist/chrome/` - Built Chrome extension
+- `dist/firefox/` - Built Firefox extension
+- `docs/` - Documentation and development notes
 
 ## Contributing
 

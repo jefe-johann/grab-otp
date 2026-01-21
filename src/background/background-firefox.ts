@@ -308,8 +308,7 @@ class FirefoxGmailOTPFetcher {
         client_id: firefoxClientId,
         response_type: 'token',
         redirect_uri: redirectUri,
-        scope: scope,
-        prompt: 'consent'
+        scope: scope
       });
       
       const authUrl = `https://accounts.google.com/o/oauth2/auth?${params}`;
