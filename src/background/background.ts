@@ -1,5 +1,4 @@
 // Using Chrome APIs directly for better compatibility
-import { checkForUpdates } from '../shared/version-check';
 
 interface FetchOTPMessage {
   action: 'fetchOTP';
@@ -234,20 +233,67 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   }
 });
 
+// Inline version check (avoid ES module imports for Chrome)
+async function checkForUpdates(currentVersion: string): Promise<void> {
+  try {
+    // Check cache first (24 hour TTL)
+    const cached = await chrome.storage.local.get(['version_check']);
+    if (cached.version_check &&
+        Date.now() - cached.version_check.lastChecked < 24 * 60 * 60 * 1000) {
+      return;
+    }
+
+    // Fetch latest release from GitHub
+    const response = await fetch(
+      'https://api.github.com/repos/jefe-johann/grab-otp/releases/latest',
+      { headers: { 'Accept': 'application/vnd.github.v3+json' } }
+    );
+
+    if (!response.ok) {
+      console.log('Version check: GitHub API returned', response.status);
+      return;
+    }
+
+    const release = await response.json();
+    const latestVersion = release.tag_name.replace(/^v/, '');
+
+    // Compare versions
+    const currentParts = currentVersion.split('.').map(n => parseInt(n, 10));
+    const latestParts = latestVersion.split('.').map(n => parseInt(n, 10));
+    let updateAvailable = false;
+
+    for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
+      const curr = currentParts[i] || 0;
+      const latest = latestParts[i] || 0;
+      if (curr < latest) {
+        updateAvailable = true;
+        break;
+      }
+      if (curr > latest) break;
+    }
+
+    const versionInfo = {
+      current: currentVersion,
+      latest: latestVersion,
+      updateAvailable,
+      lastChecked: Date.now()
+    };
+
+    await chrome.storage.local.set({ version_check: versionInfo });
+    console.log('Version check:', versionInfo);
+  } catch (error) {
+    console.log('Version check failed (non-critical):', error);
+  }
+}
+
 // Check for updates on startup
 chrome.runtime.onInstalled.addListener(async () => {
   const manifest = chrome.runtime.getManifest();
-  const currentVersion = manifest.version;
-
-  console.log('Extension installed/updated, checking for updates...');
-  await checkForUpdates(currentVersion, chrome.storage);
+  await checkForUpdates(manifest.version);
 });
 
 // Also check on startup (when browser starts)
 chrome.runtime.onStartup.addListener(async () => {
   const manifest = chrome.runtime.getManifest();
-  const currentVersion = manifest.version;
-
-  console.log('Browser started, checking for updates...');
-  await checkForUpdates(currentVersion, chrome.storage);
+  await checkForUpdates(manifest.version);
 });

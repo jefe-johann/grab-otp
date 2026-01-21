@@ -1,5 +1,4 @@
 // Browser polyfill types declared in types.d.ts
-import { getCachedVersionInfo } from '../shared/version-check';
 
 interface OTPResponse {
   success: boolean;
@@ -172,7 +171,9 @@ class PopupController {
 
   private async checkForUpdates() {
     try {
-      const versionInfo = await getCachedVersionInfo(chrome.storage);
+      // Inline version check to avoid ES module imports in Chrome
+      const cached = await chrome.storage.local.get(['version_check']);
+      const versionInfo = cached.version_check;
 
       if (versionInfo && versionInfo.updateAvailable) {
         this.updateMessage.textContent = `Version ${versionInfo.latest} is available (you have ${versionInfo.current}).`;

@@ -8,21 +8,23 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        background: isFirefox 
+        background: isFirefox
           ? resolve(__dirname, 'src/background/background-firefox.ts')
           : resolve(__dirname, 'src/background/background.ts'),
         popup: isFirefox
           ? resolve(__dirname, 'src/popup/popup-firefox.ts')
           : resolve(__dirname, 'src/popup/popup.ts'),
         'otp-bridge': resolve(__dirname, 'src/content/otp-bridge.ts'),
-        'otp-bridge-firefox': isFirefox 
+        'otp-bridge-firefox': isFirefox
           ? resolve(__dirname, 'src/content/otp-bridge-firefox.ts')
           : resolve(__dirname, 'src/content/otp-bridge.ts')
       },
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
-        assetFileNames: '[name].[ext]'
+        assetFileNames: '[name].[ext]',
+        // Inline all modules into each entry point to avoid ES module imports
+        manualChunks: () => null
       }
     },
     outDir: 'dist',
