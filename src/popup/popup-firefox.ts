@@ -20,6 +20,8 @@ class FirefoxPopupController {
   private grabButton: HTMLButtonElement;
   private domainElement: HTMLElement;
   private autoFillCheckbox: HTMLInputElement;
+  private updateBanner: HTMLElement;
+  private updateMessage: HTMLElement;
   private resultPollingInterval: number | null = null;
 
   constructor() {
@@ -27,11 +29,15 @@ class FirefoxPopupController {
     this.grabButton = document.getElementById('grabOTP') as HTMLButtonElement;
     this.domainElement = document.getElementById('currentDomain')!;
     this.autoFillCheckbox = document.getElementById('autoFillEnabled') as HTMLInputElement;
+    this.updateBanner = document.getElementById('updateBanner')!;
+    this.updateMessage = document.getElementById('updateMessage')!
     
     this.init();
   }
 
   private async init() {
+    // Check for updates
+    await this.checkForUpdates();
     await this.displayCurrentDomain();
     await this.loadAutoFillPreference();
     this.grabButton.addEventListener('click', () => this.handleGrabOTP());
@@ -196,6 +202,21 @@ class FirefoxPopupController {
       this.grabButton.textContent = 'Searching...';
     } else {
       this.grabButton.textContent = 'Get OTP from Gmail';
+    }
+  }
+
+  private async checkForUpdates() {
+    try {
+      const result = await browser.storage.local.get(['version_check']);
+      const versionInfo = result.version_check;
+
+      if (versionInfo && versionInfo.updateAvailable) {
+        this.updateMessage.textContent = `Version ${versionInfo.latest} is available (you have ${versionInfo.current}).`;
+        this.updateBanner.style.display = 'block';
+      }
+    } catch (error) {
+      // Silent fail - don't disrupt user experience for version checks
+      console.log('Failed to check for updates:', error);
     }
   }
 }

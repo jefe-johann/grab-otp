@@ -95,13 +95,40 @@
       color: #333;
       user-select: none;
     }
+
+    .update-banner {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: #856404;
+    }
+
+    .update-banner strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .update-banner a {
+      color: #856404;
+      text-decoration: underline;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>🔐 Grab OTP</h1>
   </div>
-  
+
+  <div id="updateBanner" class="update-banner" style="display: none;">
+    <strong>Update Available!</strong>
+    <span id="updateMessage"></span>
+    <a href="https://github.com/jefe-johann/grab-otp/releases/latest" target="_blank">Download Update</a>
+  </div>
+
   <div id="status" class="status" style="display: none;"></div>
   
   <button id="grabOTP" class="grab-button">

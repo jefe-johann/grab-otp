@@ -1,4 +1,5 @@
 // Using Chrome APIs directly for better compatibility
+import { checkForUpdates } from '../shared/version-check';
 
 interface FetchOTPMessage {
   action: 'fetchOTP';
@@ -231,4 +232,22 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
       console.log('[Background] No active port for tab:', message.tabId);
     }
   }
+});
+
+// Check for updates on startup
+chrome.runtime.onInstalled.addListener(async () => {
+  const manifest = chrome.runtime.getManifest();
+  const currentVersion = manifest.version;
+
+  console.log('Extension installed/updated, checking for updates...');
+  await checkForUpdates(currentVersion, chrome.storage);
+});
+
+// Also check on startup (when browser starts)
+chrome.runtime.onStartup.addListener(async () => {
+  const manifest = chrome.runtime.getManifest();
+  const currentVersion = manifest.version;
+
+  console.log('Browser started, checking for updates...');
+  await checkForUpdates(currentVersion, chrome.storage);
 });

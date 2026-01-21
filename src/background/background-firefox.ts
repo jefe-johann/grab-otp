@@ -1,4 +1,6 @@
 // Firefox background script - uses global browser from polyfill
+import { checkForUpdates } from '../shared/version-check';
+
 declare const browser: any;
 declare const __FIREFOX_CLIENT_ID__: string;
 
@@ -286,22 +288,14 @@ class FirefoxGmailOTPFetcher {
 
       console.log(`Firefox OAuth: Starting authentication flow (interactive: ${interactive})...`);
       
-      // Firefox OAuth flow - separate client ID for Firefox  
+      // Firefox OAuth flow - separate client ID for Firefox
       const firefoxClientId = __FIREFOX_CLIENT_ID__;
-      
-      // Get the actual redirect URI from Firefox and extract the hash
-      const firefoxRedirectUri = browser.identity.getRedirectURL();
-      console.log('Firefox getRedirectURL():', firefoxRedirectUri);
-      
-      // Extract hash from Firefox redirect URI for loopback format
-      const hashMatch = firefoxRedirectUri.match(/https:\/\/([^.]+)\.extensions\.allizom\.org/);
-      const hash = hashMatch ? hashMatch[1] : '081bd885c2926ace8b7bf49439b97df3967be8b9';
-      
-      const redirectUri = `http://127.0.0.1/mozoauth2/${hash}`;
+
+      // Use Firefox's native redirect URI directly
+      const redirectUri = browser.identity.getRedirectURL();
       const scope = 'https://www.googleapis.com/auth/gmail.readonly';
-      
-      console.log('Extracted hash:', hash);
-      console.log('Using redirect URI:', redirectUri);
+
+      console.log('Firefox native redirect URI:', redirectUri);
       console.log('OAuth client configured');
       
       const params = new URLSearchParams({
@@ -643,4 +637,22 @@ async function injectBridgeScript(tabId: number): Promise<void> {
     throw new Error('No script injection API available');
   }
 }
+
+// Check for updates on startup
+browser.runtime.onInstalled.addListener(async () => {
+  const manifest = browser.runtime.getManifest();
+  const currentVersion = manifest.version;
+
+  console.log('Extension installed/updated, checking for updates...');
+  await checkForUpdates(currentVersion, browser.storage);
+});
+
+// Also check on startup (when browser starts)
+browser.runtime.onStartup.addListener(async () => {
+  const manifest = browser.runtime.getManifest();
+  const currentVersion = manifest.version;
+
+  console.log('Browser started, checking for updates...');
+  await checkForUpdates(currentVersion, browser.storage);
+});
 

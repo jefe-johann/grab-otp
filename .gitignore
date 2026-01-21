@@ -8,11 +8,13 @@ build/
 
 # OAuth secrets and sensitive configuration
 OAuth-client-secret.json
+oauth-client-secret.json
+*client-secret*.json
 .env
 .env.*
 
-# Private development documentation (backed up externally via build script)
-docs/private/
+# Development documentation (backed up externally via build script)
+docs/
 CLAUDE.md
 
 # OS generated files
@@ -36,3 +38,5 @@ temp-extract/
 # Development artifacts
 grab-otp-firefox.zip
 .grepai/
+signed-packages/
+web-ext-artifacts/

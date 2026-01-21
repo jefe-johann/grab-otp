@@ -98,12 +98,28 @@ npm run test         # Run test suite
 ```
 
 **OAuth Setup:**
-For full functionality, you'll need to set up OAuth credentials:
+
+The extension includes a default OAuth client that works out-of-the-box for most users. However:
+
+**⚠️ IMPORTANT FOR FORKED VERSIONS:**
+If you fork this project and redistribute it, you **MUST** use your own OAuth credentials:
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable the Gmail API
 3. Create OAuth 2.0 credentials (Web application)
-4. Set authorized redirect URIs based on your browser extension ID
-5. Update manifest files with your client IDs
+4. Set authorized redirect URI: `https://{your-extension-id}.extensions.allizom.org/` (Firefox) or `https://{your-extension-id}.chromiumapp.org/` (Chrome)
+5. Set environment variables before building:
+   ```bash
+   export FIREFOX_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+   export CHROME_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+   npm run build
+   ```
+
+**Why?** If you use the default OAuth client in your fork:
+- Your users consume MY API quota (you're freeloading)
+- I can revoke the OAuth client at any time, breaking your fork instantly
+- Your users will blame you when it stops working
+
+**Set up your own OAuth client or risk your fork breaking without warning.**
 
 **Project Structure:**
 - `src/` - TypeScript source code
