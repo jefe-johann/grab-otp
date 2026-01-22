@@ -286,6 +286,18 @@ class FirefoxGmailOTPFetcher {
         return cached;
       }
 
+      // Try silent auth first if interactive is requested
+      // This uses existing Google session cookies to get a new token without user interaction
+      if (interactive) {
+        console.log('Firefox OAuth: Attempting silent authentication first...');
+        const silentToken = await this.attemptSilentAuth();
+        if (silentToken) {
+          console.log('Firefox OAuth: Silent auth succeeded - no user interaction needed');
+          return silentToken;
+        }
+        console.log('Firefox OAuth: Silent auth failed, falling back to interactive flow');
+      }
+
       console.log(`Firefox OAuth: Starting authentication flow (interactive: ${interactive})...`);
       
       // Firefox OAuth flow - separate client ID for Firefox
@@ -338,6 +350,49 @@ class FirefoxGmailOTPFetcher {
       return null;
     } catch (error) {
       console.error('Authentication error:', error);
+      return null;
+    }
+  }
+
+  private async attemptSilentAuth(): Promise<string | null> {
+    try {
+      const firefoxClientId = __FIREFOX_CLIENT_ID__;
+      const redirectUri = browser.identity.getRedirectURL();
+      const scope = 'https://www.googleapis.com/auth/gmail.readonly';
+
+      const params = new URLSearchParams({
+        client_id: firefoxClientId,
+        response_type: 'token',
+        redirect_uri: redirectUri,
+        scope: scope
+      });
+
+      const authUrl = `https://accounts.google.com/o/oauth2/auth?${params}`;
+
+      // Try non-interactive flow - uses existing Google session cookies
+      const responseUrl = await browser.identity.launchWebAuthFlow({
+        url: authUrl,
+        interactive: false
+      });
+
+      if (responseUrl) {
+        const urlFragment = responseUrl.split('#')[1];
+        if (urlFragment) {
+          const urlParams = new URLSearchParams(urlFragment);
+          const token = urlParams.get('access_token');
+          const expiresIn = urlParams.get('expires_in');
+
+          if (token) {
+            await this.cacheToken(token, expiresIn ? parseInt(expiresIn) : 3600);
+            return token;
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      // Silent auth failure is expected if no valid session - not an error
+      console.log('Silent auth not available:', (error as Error).message);
       return null;
     }
   }
