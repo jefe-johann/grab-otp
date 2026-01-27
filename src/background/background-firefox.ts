@@ -1,5 +1,6 @@
 // Firefox background script - uses global browser from polyfill
 import { checkForUpdates } from '../shared/version-check';
+import { generateCodeVerifier, generateCodeChallenge, exchangeCodeForTokens, refreshAccessToken } from '../shared/pkce';
 
 declare const browser: any;
 declare const __FIREFOX_CLIENT_ID__: string;
@@ -279,81 +280,151 @@ class FirefoxGmailOTPFetcher {
 
   private async getAccessToken(interactive: boolean = true): Promise<string | null> {
     try {
-      // Check for cached token first
+      // Step 1: Check for cached access token
       const cached = await this.getCachedToken();
       if (cached) {
-        console.log('Using cached OAuth token');
+        console.log('Using cached OAuth access token');
         return cached;
       }
 
-      // Try silent auth first if interactive is requested
-      // This uses existing Google session cookies to get a new token without user interaction
+      // Step 2: Try to refresh using stored refresh token (no user interaction needed!)
+      const refreshed = await this.tryRefreshToken();
+      if (refreshed) {
+        console.log('Firefox OAuth: Token refreshed successfully - no user interaction needed');
+        return refreshed;
+      }
+
+      // Step 3: Try silent auth using Google session cookies
       if (interactive) {
-        console.log('Firefox OAuth: Attempting silent authentication first...');
+        console.log('Firefox OAuth: Attempting silent authentication...');
         const silentToken = await this.attemptSilentAuth();
         if (silentToken) {
           console.log('Firefox OAuth: Silent auth succeeded - no user interaction needed');
           return silentToken;
         }
-        console.log('Firefox OAuth: Silent auth failed, falling back to interactive flow');
+        console.log('Firefox OAuth: Silent auth failed, falling back to interactive PKCE flow');
       }
 
-      console.log(`Firefox OAuth: Starting authentication flow (interactive: ${interactive})...`);
-      
-      // Firefox OAuth flow - separate client ID for Firefox
-      const firefoxClientId = __FIREFOX_CLIENT_ID__;
-
-      // Use Firefox's native redirect URI directly
-      const redirectUri = browser.identity.getRedirectURL();
-      const scope = 'https://www.googleapis.com/auth/gmail.readonly';
-
-      console.log('Firefox native redirect URI:', redirectUri);
-      console.log('OAuth client configured');
-      
-      const params = new URLSearchParams({
-        client_id: firefoxClientId,
-        response_type: 'token',
-        redirect_uri: redirectUri,
-        scope: scope
-      });
-      
-      const authUrl = `https://accounts.google.com/o/oauth2/auth?${params}`;
-      console.log('Auth URL configured for OAuth flow');
-
-      console.log('Launching web auth flow...');
-      const responseUrl = await browser.identity.launchWebAuthFlow({
-        url: authUrl,
-        interactive: interactive
-      });
-
-      console.log('OAuth response received:', responseUrl ? 'Success' : 'Failed');
-
-      if (responseUrl) {
-        // Parse access token from URL fragment
-        const urlFragment = responseUrl.split('#')[1];
-        console.log('URL fragment received for token extraction');
-        if (urlFragment) {
-          const urlParams = new URLSearchParams(urlFragment);
-          const token = urlParams.get('access_token');
-          const expiresIn = urlParams.get('expires_in');
-          
-          if (token) {
-            console.log('Token extraction:', 'Success');
-            // Cache the token with expiration
-            await this.cacheToken(token, expiresIn ? parseInt(expiresIn) : 3600);
-            return token;
-          }
-        }
+      // Step 4: Full interactive PKCE flow (gets refresh token for future use)
+      if (!interactive) {
+        return null;
       }
-      
-      console.log('No response URL received');
-      return null;
+
+      return await this.performPKCEAuth();
     } catch (error) {
       console.error('Authentication error:', error);
       return null;
     }
   }
 
+  /**
+   * Perform full PKCE OAuth flow - this gets us a refresh token for long-lived access
+   */
+  private async performPKCEAuth(): Promise<string | null> {
+    console.log('Firefox OAuth: Starting PKCE authentication flow...');
+
+    const firefoxClientId = __FIREFOX_CLIENT_ID__;
+    const redirectUri = browser.identity.getRedirectURL();
+    const scope = 'https://www.googleapis.com/auth/gmail.readonly';
+
+    // Generate PKCE code verifier and challenge
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+    console.log('Firefox native redirect URI:', redirectUri);
+    console.log('PKCE challenge generated');
+
+    const params = new URLSearchParams({
+      client_id: firefoxClientId,
+      response_type: 'code',  // Authorization code flow (not implicit)
+      redirect_uri: redirectUri,
+      scope: scope,
+      access_type: 'offline',  // Request refresh token
+      prompt: 'consent',  // Force consent to ensure refresh token is issued
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256'
+    });
+
+    const authUrl = `https://accounts.google.com/o/oauth2/auth?${params}`;
+    console.log('PKCE auth URL configured');
+
+    console.log('Launching PKCE auth flow...');
+    const responseUrl = await browser.identity.launchWebAuthFlow({
+      url: authUrl,
+      interactive: true
+    });
+
+    console.log('OAuth response received:', responseUrl ? 'Success' : 'Failed');
+
+    if (responseUrl) {
+      // Parse authorization code from URL query params
+      const url = new URL(responseUrl);
+      const code = url.searchParams.get('code');
+
+      if (code) {
+        console.log('Authorization code received, exchanging for tokens...');
+
+        // Exchange code for tokens using PKCE
+        const tokens = await exchangeCodeForTokens(code, codeVerifier, firefoxClientId, redirectUri);
+
+        if (tokens) {
+          console.log('Token exchange successful, refresh_token:', tokens.refresh_token ? 'received' : 'not received');
+
+          // Cache the access token
+          await this.cacheToken(tokens.access_token, tokens.expires_in);
+
+          // Store refresh token for long-lived access (this is the key!)
+          if (tokens.refresh_token) {
+            await this.storeRefreshToken(tokens.refresh_token);
+            console.log('Refresh token stored for future sessions');
+          }
+
+          return tokens.access_token;
+        }
+      }
+    }
+
+    console.log('PKCE auth flow failed');
+    return null;
+  }
+
+  /**
+   * Try to get a new access token using stored refresh token
+   * This is the key to avoiding re-auth prompts!
+   */
+  private async tryRefreshToken(): Promise<string | null> {
+    try {
+      const result = await browser.storage.local.get(['oauth_refresh_token']);
+      const refreshToken = result.oauth_refresh_token;
+
+      if (!refreshToken) {
+        console.log('No refresh token stored');
+        return null;
+      }
+
+      console.log('Attempting to refresh access token...');
+      const firefoxClientId = __FIREFOX_CLIENT_ID__;
+      const tokens = await refreshAccessToken(refreshToken, firefoxClientId);
+
+      if (tokens) {
+        console.log('Token refresh successful');
+        await this.cacheToken(tokens.access_token, tokens.expires_in);
+        return tokens.access_token;
+      }
+
+      // Refresh token may have been revoked, clear it
+      console.log('Refresh token invalid, clearing stored token');
+      await browser.storage.local.remove(['oauth_refresh_token']);
+      return null;
+    } catch (error) {
+      console.error('Error refreshing token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Silent auth fallback using Google session cookies (original approach)
+   */
   private async attemptSilentAuth(): Promise<string | null> {
     try {
       const firefoxClientId = __FIREFOX_CLIENT_ID__;
@@ -364,7 +435,8 @@ class FirefoxGmailOTPFetcher {
         client_id: firefoxClientId,
         response_type: 'token',
         redirect_uri: redirectUri,
-        scope: scope
+        scope: scope,
+        prompt: 'none'  // Explicitly request no UI
       });
 
       const authUrl = `https://accounts.google.com/o/oauth2/auth?${params}`;
@@ -402,17 +474,16 @@ class FirefoxGmailOTPFetcher {
       const result = await browser.storage.local.get(['oauth_token', 'oauth_expires']);
       const token = result.oauth_token;
       const expires = result.oauth_expires;
-      
+
       if (token && expires && Date.now() < expires) {
         return token;
       }
-      
-      // Token expired or doesn't exist, clear cache
+
+      // Token expired or doesn't exist
       if (token) {
-        console.log('Cached token expired, clearing cache');
-        await browser.storage.local.remove(['oauth_token', 'oauth_expires']);
+        console.log('Cached access token expired');
       }
-      
+
       return null;
     } catch (error) {
       console.error('Error reading cached token:', error);
@@ -428,16 +499,27 @@ class FirefoxGmailOTPFetcher {
         oauth_token: token,
         oauth_expires: expiresAt
       });
-      console.log('OAuth token cached successfully');
+      console.log('OAuth access token cached successfully');
     } catch (error) {
       console.error('Error caching token:', error);
+    }
+  }
+
+  private async storeRefreshToken(refreshToken: string): Promise<void> {
+    try {
+      await browser.storage.local.set({
+        oauth_refresh_token: refreshToken
+      });
+      console.log('OAuth refresh token stored');
+    } catch (error) {
+      console.error('Error storing refresh token:', error);
     }
   }
 
   private async clearTokenCache(): Promise<void> {
     try {
       await browser.storage.local.remove(['oauth_token', 'oauth_expires']);
-      console.log('OAuth token cache cleared');
+      console.log('OAuth access token cache cleared');
     } catch (error) {
       console.error('Error clearing token cache:', error);
     }
