@@ -38,30 +38,39 @@ function base64UrlEncode(buffer: Uint8Array): string {
 /**
  * Exchange authorization code for tokens using PKCE
  * Returns access_token, refresh_token, and expires_in
+ * Note: Google requires client_secret even with PKCE for Web Application types
  */
 export async function exchangeCodeForTokens(
   code: string,
   codeVerifier: string,
   clientId: string,
-  redirectUri: string
+  redirectUri: string,
+  clientSecret?: string
 ): Promise<{
   access_token: string;
   refresh_token?: string;
   expires_in: number;
 } | null> {
   try {
+    const params: Record<string, string> = {
+      client_id: clientId,
+      code: code,
+      code_verifier: codeVerifier,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+    };
+
+    // Google requires client_secret for Web Application OAuth clients
+    if (clientSecret) {
+      params.client_secret = clientSecret;
+    }
+
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({
-        client_id: clientId,
-        code: code,
-        code_verifier: codeVerifier,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri,
-      }).toString(),
+      body: new URLSearchParams(params).toString(),
     });
 
     if (!response.ok) {

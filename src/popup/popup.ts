@@ -19,6 +19,12 @@ class PopupController {
   private autoFillCheckbox: HTMLInputElement;
   private updateBanner: HTMLElement;
   private updateMessage: HTMLElement;
+  private settingsToggle: HTMLButtonElement;
+  private overridePanel: HTMLElement;
+  private overrideInput: HTMLInputElement;
+  private clearOverrideBtn: HTMLButtonElement;
+  private overrideStatus: HTMLElement;
+  private currentWebsiteDomain: string = '';
 
   constructor() {
     this.statusElement = document.getElementById('status')!;
@@ -27,6 +33,11 @@ class PopupController {
     this.autoFillCheckbox = document.getElementById('autoFillEnabled') as HTMLInputElement;
     this.updateBanner = document.getElementById('updateBanner')!;
     this.updateMessage = document.getElementById('updateMessage')!;
+    this.settingsToggle = document.getElementById('settingsToggle') as HTMLButtonElement;
+    this.overridePanel = document.getElementById('domainOverridePanel')!;
+    this.overrideInput = document.getElementById('overrideDomain') as HTMLInputElement;
+    this.clearOverrideBtn = document.getElementById('clearOverride') as HTMLButtonElement;
+    this.overrideStatus = document.getElementById('overrideStatus')!;
 
     this.init();
   }
@@ -38,24 +49,47 @@ class PopupController {
     await this.loadAutoFillPreference();
     this.grabButton.addEventListener('click', () => this.handleGrabOTP());
     this.autoFillCheckbox.addEventListener('change', () => this.saveAutoFillPreference());
+
+    // Domain override settings
+    this.settingsToggle.addEventListener('click', () => this.toggleOverridePanel());
+    this.overrideInput.addEventListener('blur', () => this.handleOverrideChange());
+    this.overrideInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        this.handleOverrideChange();
+        this.overrideInput.blur();
+      }
+    });
+    this.clearOverrideBtn.addEventListener('click', () => this.handleClearOverride());
   }
 
   private async displayCurrentDomain() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
-      if (tab?.url) {
-        const domain = new URL(tab.url).hostname;
-        this.domainElement.textContent = `Current site: ${domain}`;
-      } else if (tab?.pendingUrl) {
-        const domain = new URL(tab.pendingUrl).hostname;
-        this.domainElement.textContent = `Current site: ${domain}`;
+      const tabUrl = tab?.url || tab?.pendingUrl;
+
+      if (tabUrl) {
+        this.currentWebsiteDomain = new URL(tabUrl).hostname;
+
+        // Check for override
+        const override = await this.getOverride(this.currentWebsiteDomain);
+
+        if (override) {
+          this.domainElement.textContent = `Searching: ${override}`;
+          this.overrideInput.value = override;
+          this.overrideStatus.textContent = `Override for ${this.currentWebsiteDomain}`;
+        } else {
+          this.domainElement.textContent = `Current site: ${this.currentWebsiteDomain}`;
+          this.overrideInput.value = '';
+          this.overrideStatus.textContent = '';
+        }
       } else {
         this.domainElement.textContent = 'Click "Get OTP" to detect current site';
+        this.settingsToggle.style.display = 'none';
       }
     } catch (error) {
       console.error('Error getting current domain:', error);
       this.domainElement.textContent = 'Unable to detect current site';
+      this.settingsToggle.style.display = 'none';
     }
   }
 
@@ -84,15 +118,18 @@ class PopupController {
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const tab = tabs[0];
-      
-      
+
       const tabUrl = tab?.url || tab?.pendingUrl;
       if (!tabUrl) {
         console.error('No URL available in tab object:', Object.keys(tab || {}));
         throw new Error('Unable to get current tab URL - activeTab permission may not be granted');
       }
 
-      const domain = new URL(tabUrl).hostname;
+      const websiteDomain = new URL(tabUrl).hostname;
+
+      // Check for domain override
+      const override = await this.getOverride(websiteDomain);
+      const searchDomain = override || websiteDomain;
       
       // If auto-fill is enabled, inject bridge immediately (while activeTab is hot)
       if (this.autoFillCheckbox.checked) {
@@ -114,7 +151,7 @@ class PopupController {
 
       const response = await chrome.runtime.sendMessage({
         action: 'fetchOTP',
-        domain: domain,
+        domain: searchDomain,
         autoFill: this.autoFillCheckbox.checked
       } as OTPRequest) as OTPResponse;
 
@@ -167,6 +204,91 @@ class PopupController {
     } else {
       this.grabButton.textContent = 'Get OTP from Gmail';
     }
+  }
+
+  // Domain override methods
+  private async getOverride(websiteDomain: string): Promise<string | null> {
+    try {
+      const result = await chrome.storage.local.get(['domain_overrides']);
+      const overrides = result.domain_overrides || {};
+      return overrides[websiteDomain] || null;
+    } catch (error) {
+      console.error('Error getting domain override:', error);
+      return null;
+    }
+  }
+
+  private async saveOverride(websiteDomain: string, emailDomain: string): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get(['domain_overrides']);
+      const overrides = result.domain_overrides || {};
+      overrides[websiteDomain] = emailDomain;
+      await chrome.storage.local.set({ domain_overrides: overrides });
+    } catch (error) {
+      console.error('Error saving domain override:', error);
+    }
+  }
+
+  private async clearOverride(websiteDomain: string): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get(['domain_overrides']);
+      const overrides = result.domain_overrides || {};
+      delete overrides[websiteDomain];
+      await chrome.storage.local.set({ domain_overrides: overrides });
+    } catch (error) {
+      console.error('Error clearing domain override:', error);
+    }
+  }
+
+  private toggleOverridePanel() {
+    const isHidden = this.overridePanel.style.display === 'none';
+    this.overridePanel.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) {
+      this.overrideInput.focus();
+    }
+  }
+
+  private async handleOverrideChange() {
+    const value = this.overrideInput.value.trim().toLowerCase();
+
+    if (!this.currentWebsiteDomain) return;
+
+    if (!value) {
+      // Empty input - clear override
+      await this.clearOverride(this.currentWebsiteDomain);
+      this.domainElement.textContent = `Current site: ${this.currentWebsiteDomain}`;
+      this.overrideStatus.textContent = '';
+      return;
+    }
+
+    // Basic validation - should have at least one dot and no spaces
+    if (!value.includes('.') || value.includes(' ')) {
+      this.overrideStatus.textContent = 'Enter a valid domain (e.g., example.com)';
+      this.overrideStatus.style.color = '#c62828';
+      return;
+    }
+
+    // Don't save if same as detected domain
+    if (value === this.currentWebsiteDomain) {
+      await this.clearOverride(this.currentWebsiteDomain);
+      this.domainElement.textContent = `Current site: ${this.currentWebsiteDomain}`;
+      this.overrideStatus.textContent = '';
+      return;
+    }
+
+    await this.saveOverride(this.currentWebsiteDomain, value);
+    this.domainElement.textContent = `Searching: ${value}`;
+    this.overrideStatus.textContent = `Override for ${this.currentWebsiteDomain}`;
+    this.overrideStatus.style.color = '#2e7d32';
+  }
+
+  private async handleClearOverride() {
+    if (!this.currentWebsiteDomain) return;
+
+    await this.clearOverride(this.currentWebsiteDomain);
+    this.overrideInput.value = '';
+    this.domainElement.textContent = `Current site: ${this.currentWebsiteDomain}`;
+    this.overrideStatus.textContent = '';
   }
 
   private async checkForUpdates() {

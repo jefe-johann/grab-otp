@@ -38,8 +38,9 @@ export default defineConfig({
     }
   },
   define: {
-    __CHROME_CLIENT_ID__: JSON.stringify(process.env.CHROME_CLIENT_ID || '502151418270-o0t7rkbbrrjmlp2k7khjhfs47eovo5kc.apps.googleusercontent.com'),
-    __FIREFOX_CLIENT_ID__: JSON.stringify(process.env.FIREFOX_CLIENT_ID || '502151418270-9qtnoglkkeb06mt64hli30hs9lsthj9e.apps.googleusercontent.com')
+    __CHROME_CLIENT_ID__: JSON.stringify(process.env.CHROME_CLIENT_ID || ''),
+    __FIREFOX_CLIENT_ID__: JSON.stringify(process.env.FIREFOX_CLIENT_ID || ''),
+    __FIREFOX_CLIENT_SECRET__: JSON.stringify(process.env.FIREFOX_CLIENT_SECRET || '')
   },
   plugins: [
     {
@@ -55,8 +56,8 @@ export default defineConfig({
         let manifestContent = readFileSync(manifestSrc, 'utf8');
         
         // Replace client ID placeholders with environment variables
-        const chromeClientId = process.env.CHROME_CLIENT_ID || '502151418270-o0t7rkbbrrjmlp2k7khjhfs47eovo5kc.apps.googleusercontent.com';
-        const firefoxClientId = process.env.FIREFOX_CLIENT_ID || '502151418270-9qtnoglkkeb06mt64hli30hs9lsthj9e.apps.googleusercontent.com';
+        const chromeClientId = process.env.CHROME_CLIENT_ID || '';
+        const firefoxClientId = process.env.FIREFOX_CLIENT_ID || '';
         
         manifestContent = manifestContent.replace('__CHROME_CLIENT_ID__', chromeClientId);
         manifestContent = manifestContent.replace('__FIREFOX_CLIENT_ID__', firefoxClientId);

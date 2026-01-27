@@ -4,6 +4,7 @@ import { generateCodeVerifier, generateCodeChallenge, exchangeCodeForTokens, ref
 
 declare const browser: any;
 declare const __FIREFOX_CLIENT_ID__: string;
+declare const __FIREFOX_CLIENT_SECRET__: string;
 
 interface FetchOTPMessage {
   action: 'fetchOTP';
@@ -364,8 +365,9 @@ class FirefoxGmailOTPFetcher {
       if (code) {
         console.log('Authorization code received, exchanging for tokens...');
 
-        // Exchange code for tokens using PKCE
-        const tokens = await exchangeCodeForTokens(code, codeVerifier, firefoxClientId, redirectUri);
+        // Exchange code for tokens using PKCE (Google requires client_secret for Web Application types)
+        const firefoxClientSecret = __FIREFOX_CLIENT_SECRET__;
+        const tokens = await exchangeCodeForTokens(code, codeVerifier, firefoxClientId, redirectUri, firefoxClientSecret);
 
         if (tokens) {
           console.log('Token exchange successful, refresh_token:', tokens.refresh_token ? 'received' : 'not received');

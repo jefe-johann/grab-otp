@@ -66,11 +66,96 @@
       cursor: not-allowed;
     }
     
+    .domain-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
     .current-domain {
       font-size: 12px;
       color: #666;
       text-align: center;
-      margin-top: 8px;
+    }
+
+    .settings-toggle {
+      background: none;
+      border: none;
+      padding: 4px;
+      cursor: pointer;
+      opacity: 0.5;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+    }
+
+    .settings-toggle:hover {
+      opacity: 1;
+    }
+
+    .settings-toggle svg {
+      width: 14px;
+      height: 14px;
+      fill: #666;
+    }
+
+    .domain-override-panel {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f5f5f5;
+      border-radius: 6px;
+    }
+
+    .override-label {
+      font-size: 12px;
+      color: #666;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .override-input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .override-input {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .override-input:focus {
+      outline: none;
+      border-color: #1976d2;
+    }
+
+    .clear-override-btn {
+      padding: 8px 12px;
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .clear-override-btn:hover {
+      background: #e0e0e0;
+    }
+
+    .override-status {
+      font-size: 11px;
+      color: #2e7d32;
+      margin-top: 6px;
+    }
+
+    .override-hint {
+      font-size: 11px;
+      color: #666;
+      font-style: italic;
     }
     
     .settings {
@@ -135,7 +220,21 @@
     Get OTP from Gmail
   </button>
   
-  <div id="currentDomain" class="current-domain"></div>
+  <div class="domain-row">
+    <span id="currentDomain" class="current-domain"></span>
+    <button id="settingsToggle" class="settings-toggle" title="Domain settings">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+    </button>
+  </div>
+
+  <div id="domainOverridePanel" class="domain-override-panel" style="display: none;">
+    <label class="override-label">Search emails from:</label>
+    <div class="override-input-row">
+      <input type="text" id="overrideDomain" class="override-input" placeholder="e.g., example.com">
+      <button id="clearOverride" class="clear-override-btn">Clear</button>
+    </div>
+    <div id="overrideStatus" class="override-status"></div>
+  </div>
   
   <div class="settings">
     <label class="checkbox-container">
