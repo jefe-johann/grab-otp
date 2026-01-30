@@ -318,8 +318,8 @@ class PopupController {
           await new Promise(resolve => setTimeout(resolve, 100));
           console.log('[Popup] Bridge injected, now fetching OTP...');
         } catch (error) {
-          console.error('[Popup] Failed to inject bridge:', error);
-          this.showStatus('Auto-fill setup failed, using clipboard only', 'error');
+          // Just log the error - OTP will still be copied to clipboard
+          console.log('[Popup] Bridge injection skipped:', (error as Error).message);
         }
       }
 

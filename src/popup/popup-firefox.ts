@@ -325,9 +325,8 @@ class FirefoxPopupController {
           await new Promise(resolve => setTimeout(resolve, 100));
           console.log('[Firefox Popup] Bridge injected, now fetching OTP...');
         } catch (error) {
-          console.error('[Firefox Popup] Failed to inject bridge:', error);
-          this.showStatus('Auto-fill setup failed, using clipboard only', 'error');
-          // Continue with clipboard-only mode
+          // Just log the error - OTP will still be copied to clipboard
+          console.log('[Firefox Popup] Bridge injection skipped:', (error as Error).message);
         }
       }
 

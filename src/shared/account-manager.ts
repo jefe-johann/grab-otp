@@ -271,8 +271,55 @@ export class AccountManager {
       }
     }
 
-    // Mark account as needing re-authentication
-    console.log('[AccountManager] Account needs re-authentication:', email);
+    // Try interactive re-authentication as last resort
+    console.log('[AccountManager] Attempting interactive re-authentication for:', email);
+    const interactiveTokenData = await performPKCEAuth(
+      this.oauthConfig,
+      (details) => this.identity.launchWebAuthFlow(details)
+    );
+
+    if (interactiveTokenData) {
+      // Verify this is the same account
+      const newEmail = await getUserEmail(interactiveTokenData.accessToken);
+
+      if (newEmail === email) {
+        // Same account - update stored token
+        const accounts = await this.getAllAccounts();
+        accounts[email] = {
+          ...accounts[email],
+          accessToken: interactiveTokenData.accessToken,
+          accessTokenExpires: interactiveTokenData.accessTokenExpires,
+          refreshToken: interactiveTokenData.refreshToken || accounts[email].refreshToken,
+          lastUsedAt: Date.now()
+        };
+        await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
+
+        console.log('[AccountManager] Interactive re-auth succeeded for:', email);
+        return interactiveTokenData.accessToken;
+      } else if (newEmail) {
+        // Different account selected - add it as new account
+        console.log('[AccountManager] User selected different account:', newEmail, 'instead of:', email);
+        const accounts = await this.getAllAccounts();
+        const now = Date.now();
+
+        accounts[newEmail] = {
+          email: newEmail,
+          accessToken: interactiveTokenData.accessToken,
+          accessTokenExpires: interactiveTokenData.accessTokenExpires,
+          refreshToken: interactiveTokenData.refreshToken,
+          addedAt: accounts[newEmail]?.addedAt || now,
+          lastUsedAt: now
+        };
+        await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
+
+        // Switch to the newly authenticated account
+        await this.setActiveAccount(newEmail);
+        console.log('[AccountManager] Switched active account to:', newEmail);
+        return interactiveTokenData.accessToken;
+      }
+    }
+
+    console.log('[AccountManager] All re-authentication attempts failed for:', email);
     return null;
   }
 
