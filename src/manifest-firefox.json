@@ -7,9 +7,10 @@
   "permissions": [
     "activeTab",
     "tabs",
-    "storage", 
+    "storage",
     "identity",
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
   ],
 
   "optional_permissions": [

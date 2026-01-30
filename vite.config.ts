@@ -1,10 +1,14 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { resolve } from 'path';
 import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
 
 const isFirefox = process.env.TARGET === 'firefox';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Load env file based on mode (development/production)
+  const env = loadEnv(mode, process.cwd(), '');
+
+  return {
   build: {
     rollupOptions: {
       input: {
@@ -38,9 +42,10 @@ export default defineConfig({
     }
   },
   define: {
-    __CHROME_CLIENT_ID__: JSON.stringify(process.env.CHROME_CLIENT_ID || ''),
-    __FIREFOX_CLIENT_ID__: JSON.stringify(process.env.FIREFOX_CLIENT_ID || ''),
-    __FIREFOX_CLIENT_SECRET__: JSON.stringify(process.env.FIREFOX_CLIENT_SECRET || '')
+    __CHROME_CLIENT_ID__: JSON.stringify(env.CHROME_CLIENT_ID || ''),
+    __CHROME_CLIENT_SECRET__: JSON.stringify(env.CHROME_CLIENT_SECRET || ''),
+    __FIREFOX_CLIENT_ID__: JSON.stringify(env.FIREFOX_CLIENT_ID || ''),
+    __FIREFOX_CLIENT_SECRET__: JSON.stringify(env.FIREFOX_CLIENT_SECRET || '')
   },
   plugins: [
     {
@@ -56,8 +61,8 @@ export default defineConfig({
         let manifestContent = readFileSync(manifestSrc, 'utf8');
         
         // Replace client ID placeholders with environment variables
-        const chromeClientId = process.env.CHROME_CLIENT_ID || '';
-        const firefoxClientId = process.env.FIREFOX_CLIENT_ID || '';
+        const chromeClientId = env.CHROME_CLIENT_ID || '';
+        const firefoxClientId = env.FIREFOX_CLIENT_ID || '';
         
         manifestContent = manifestContent.replace('__CHROME_CLIENT_ID__', chromeClientId);
         manifestContent = manifestContent.replace('__FIREFOX_CLIENT_ID__', firefoxClientId);
@@ -98,4 +103,5 @@ export default defineConfig({
       }
     }
   ]
+  };
 });

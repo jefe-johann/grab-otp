@@ -7,7 +7,7 @@ console.log('[OTP Bridge] Content script loaded on:', window.location.href);
 // Establish long-lived connection to background script
 const port = chrome.runtime.connect({ name: 'otpBridge' });
 
-port.onMessage.addListener((message) => {
+port.onMessage.addListener((message: { action: string; otp?: string }) => {
   console.log('[OTP Bridge] Received message:', message.action);
   
   if (message.action === 'fillOTP' && message.otp) {
