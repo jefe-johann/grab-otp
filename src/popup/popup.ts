@@ -333,15 +333,18 @@ class PopupController {
         // Always copy to clipboard
         await this.copyToClipboard(otpResponse.otp);
 
-        // If auto-fill was enabled and bridge was injected, send OTP via background
+        // If auto-fill was enabled, send OTP directly to the content script
         if (this.autoFillCheckbox.checked) {
-          // Send OTP to background, which will forward to bridge
-          chrome.runtime.sendMessage({
-            action: 'sendOTPToBridge',
-            tabId: tab.id!,
-            otp: otpResponse.otp
-          });
-          this.showStatus(`OTP auto-filled & copied: ${otpResponse.otp}`, 'success');
+          try {
+            await chrome.tabs.sendMessage(tab.id!, {
+              action: 'fillOTP',
+              otp: otpResponse.otp
+            });
+            this.showStatus(`OTP auto-filled & copied: ${otpResponse.otp}`, 'success');
+          } catch {
+            // Bridge might not be available, but OTP is still copied
+            this.showStatus(`OTP copied to clipboard: ${otpResponse.otp}`, 'success');
+          }
         } else {
           this.showStatus(`OTP copied to clipboard: ${otpResponse.otp}`, 'success');
         }

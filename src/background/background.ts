@@ -145,7 +145,9 @@ class GmailOTPFetcher {
     });
 
     if (!response.ok) {
-      throw new Error(`Gmail API error: ${response.status}`);
+      const errorBody = await response.text();
+      console.error('[Chrome Background] Gmail API error body:', errorBody);
+      throw new Error(`Gmail API error: ${response.status} - ${errorBody}`);
     }
 
     const data: GmailSearchResponse = await response.json();
@@ -223,27 +225,6 @@ class GmailOTPFetcher {
 
 const otpFetcher = new GmailOTPFetcher();
 
-// Store active ports for OTP bridge communication
-const activePorts = new Map<number, chrome.runtime.Port>();
-
-// Handle long-lived port connections from bridge content scripts
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === 'otpBridge') {
-    console.log('[Background] Bridge connected from tab:', port.sender?.tab?.id);
-
-    if (port.sender?.tab?.id) {
-      activePorts.set(port.sender.tab.id, port);
-
-      port.onDisconnect.addListener(() => {
-        console.log('[Background] Bridge disconnected from tab:', port.sender?.tab?.id);
-        if (port.sender?.tab?.id) {
-          activePorts.delete(port.sender.tab.id);
-        }
-      });
-    }
-  }
-});
-
 // Handle popup messages
 chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   // Account management messages
@@ -284,18 +265,6 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
     // Background only fetches OTP, popup handles bridge injection
     otpFetcher.fetchOTPForDomain(message.domain).then(sendResponse);
     return true; // Required to indicate async response
-  }
-
-  if (message.action === 'sendOTPToBridge') {
-    // Forward OTP to bridge via port
-    console.log('[Background] Forwarding OTP to bridge for tab:', message.tabId);
-    const port = activePorts.get(message.tabId);
-    if (port && message.otp) {
-      console.log('[Background] Sending OTP to bridge via port');
-      port.postMessage({ action: 'fillOTP', otp: message.otp });
-    } else {
-      console.log('[Background] No active port for tab:', message.tabId);
-    }
   }
 });
 

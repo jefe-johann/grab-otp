@@ -151,14 +151,16 @@ export class AccountManager {
 
     // Store the account
     const accounts = await this.getAllAccounts();
+    const existingAccount = accounts[email];
     const now = Date.now();
 
     accounts[email] = {
       email,
       accessToken: tokenData.accessToken,
       accessTokenExpires: tokenData.accessTokenExpires,
-      refreshToken: tokenData.refreshToken,
-      addedAt: accounts[email]?.addedAt || now, // Preserve original add date if re-authenticating
+      // Keep an existing refresh token if Google doesn't return one during re-auth.
+      refreshToken: tokenData.refreshToken || existingAccount?.refreshToken,
+      addedAt: existingAccount?.addedAt || now, // Preserve original add date if re-authenticating
       lastUsedAt: now
     };
 
@@ -327,17 +329,17 @@ export class AccountManager {
    * Get a valid token for the active account
    */
   async getActiveAccountToken(): Promise<{ token: string; email: string } | null> {
-    const activeEmail = await this.getActiveAccountEmail();
-    if (!activeEmail) {
+    const activeAccount = await this.getActiveAccount();
+    if (!activeAccount) {
       return null;
     }
 
-    const token = await this.getValidToken(activeEmail);
+    const token = await this.getValidToken(activeAccount.email);
     if (!token) {
       return null;
     }
 
-    return { token, email: activeEmail };
+    return { token, email: activeAccount.email };
   }
 
   /**

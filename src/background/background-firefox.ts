@@ -49,9 +49,6 @@ const accountManager = new AccountManager(
 );
 
 class FirefoxGmailOTPFetcher {
-  // Port connections for bridges (tab ID -> port)
-  private activePorts = new Map<number, any>();
-
   private readonly OTP_PATTERNS = [
     /\b(\d{6})\b/g,           // 6-digit codes
     /\b(\d{4})\b/g,           // 4-digit codes
@@ -71,13 +68,12 @@ class FirefoxGmailOTPFetcher {
 
       if (result.success && result.otp) {
         if (autoFill && tabId) {
-          // Try auto-fill via bridge first
-          const port = this.activePorts.get(tabId);
-          if (port) {
+          // Try auto-fill via direct message to content script
+          try {
             console.log('[Firefox Background] Sending OTP to bridge for auto-fill');
-            port.postMessage({ action: 'fillOTP', otp: result.otp });
+            await browser.tabs.sendMessage(tabId, { action: 'fillOTP', otp: result.otp });
 
-            // Always copy to clipboard as backup, even when auto-filling
+            // Always copy to clipboard as backup
             await this.copyToClipboard(result.otp);
 
             await this.showPopupWithResult({
@@ -86,15 +82,15 @@ class FirefoxGmailOTPFetcher {
               domain: domain,
               message: `OTP: ${result.otp} (auto-filled & copied)`
             });
-          } else {
-            console.log('[Firefox Background] No bridge port found, falling back to clipboard');
-            // Fall back to clipboard if no bridge
+          } catch (error) {
+            console.log('[Firefox Background] Bridge not available, falling back to clipboard:', error);
+            // Fall back to clipboard if bridge not available
             await this.copyToClipboard(result.otp);
             await this.showPopupWithResult({
               success: true,
               otp: result.otp,
               domain: domain,
-              message: `OTP: ${result.otp} (copied to clipboard - auto-fill failed)`
+              message: `OTP: ${result.otp} (copied to clipboard)`
             });
           }
         } else {
@@ -376,48 +372,9 @@ class FirefoxGmailOTPFetcher {
     }
   }
 
-  // Port management methods
-  addBridgePort(tabId: number, port: any): void {
-    this.activePorts.set(tabId, port);
-    console.log('[Firefox Background] Bridge port added for tab:', tabId);
-  }
-
-  removeBridgePort(tabId: number): void {
-    this.activePorts.delete(tabId);
-    console.log('[Firefox Background] Bridge port removed for tab:', tabId);
-  }
-
-  getBridgePort(tabId: number): any {
-    return this.activePorts.get(tabId);
-  }
 }
 
 const firefoxOtpFetcher = new FirefoxGmailOTPFetcher();
-
-// Long-lived port connection handler
-browser.runtime.onConnect.addListener((port: any) => {
-  if (port.name === 'firefoxOtpBridge') {
-    console.log('[Firefox Background] Bridge connected from tab:', port.sender?.tab?.id);
-
-    if (port.sender?.tab?.id) {
-      firefoxOtpFetcher.addBridgePort(port.sender.tab.id, port);
-
-      port.onDisconnect.addListener(() => {
-        console.log('[Firefox Background] Bridge disconnected from tab:', port.sender?.tab?.id);
-        if (port.sender?.tab?.id) {
-          firefoxOtpFetcher.removeBridgePort(port.sender.tab.id);
-        }
-      });
-
-      // Handle messages from bridge
-      port.onMessage.addListener((message: any) => {
-        if (message.action === 'fillResult') {
-          console.log('[Firefox Background] Bridge fill result:', message.success ? 'Success' : 'Failed');
-        }
-      });
-    }
-  }
-});
 
 // Enhanced message handler
 browser.runtime.onMessage.addListener(async (message: any, sender: any, sendResponse: any) => {
@@ -463,13 +420,12 @@ browser.runtime.onMessage.addListener(async (message: any, sender: any, sendResp
   }
 
   if (message.action === 'sendOTPToBridge') {
-    // Forward OTP to bridge via port
-    const port = firefoxOtpFetcher.getBridgePort(message.tabId);
-    if (port) {
+    // Forward OTP to bridge via direct message
+    try {
       console.log('[Firefox Background] Forwarding OTP to bridge');
-      port.postMessage({ action: 'fillOTP', otp: message.otp });
-    } else {
-      console.log('[Firefox Background] No bridge port found for tab:', message.tabId);
+      await browser.tabs.sendMessage(message.tabId, { action: 'fillOTP', otp: message.otp });
+    } catch (error) {
+      console.log('[Firefox Background] Could not send to bridge:', error);
     }
     return;
   }

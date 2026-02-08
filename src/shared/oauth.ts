@@ -45,7 +45,8 @@ export async function performPKCEAuth(
       redirect_uri: config.redirectUri,
       scope: GMAIL_SCOPE,
       access_type: 'offline',
-      prompt: 'select_account',
+      // `consent` is required to reliably receive/refresh offline tokens in Firefox.
+      prompt: 'consent select_account',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256'
     });
