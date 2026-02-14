@@ -226,7 +226,8 @@ export class AccountManager {
     if (account.refreshToken) {
       const newTokenData = await refreshToken(
         account.refreshToken,
-        this.oauthConfig.clientId
+        this.oauthConfig.clientId,
+        this.oauthConfig.clientSecret
       );
 
       if (newTokenData) {
@@ -398,7 +399,11 @@ export class AccountManager {
 
     // If we couldn't get email and have refresh token, try refreshing first
     if (!email && legacyRefresh) {
-      const newTokenData = await refreshToken(legacyRefresh, this.oauthConfig.clientId);
+      const newTokenData = await refreshToken(
+        legacyRefresh,
+        this.oauthConfig.clientId,
+        this.oauthConfig.clientSecret
+      );
       if (newTokenData) {
         email = await getUserEmail(newTokenData.accessToken);
         if (email) {

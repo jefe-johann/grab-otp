@@ -91,22 +91,27 @@ export async function exchangeCodeForTokens(
  */
 export async function refreshAccessToken(
   refreshToken: string,
-  clientId: string
+  clientId: string,
+  clientSecret?: string
 ): Promise<{
   access_token: string;
   expires_in: number;
 } | null> {
   try {
+    const params: Record<string, string> = {
+      client_id: clientId,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    };
+    if (clientSecret) {
+      params.client_secret = clientSecret;
+    }
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({
-        client_id: clientId,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }).toString(),
+      body: new URLSearchParams(params).toString(),
     });
 
     if (!response.ok) {

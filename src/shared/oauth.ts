@@ -163,10 +163,11 @@ export async function attemptSilentAuth(
  */
 export async function refreshToken(
   refreshTokenValue: string,
-  clientId: string
+  clientId: string,
+  clientSecret?: string
 ): Promise<TokenData | null> {
   try {
-    const tokens = await refreshAccessToken(refreshTokenValue, clientId);
+    const tokens = await refreshAccessToken(refreshTokenValue, clientId, clientSecret);
 
     if (!tokens) {
       return null;
