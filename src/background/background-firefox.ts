@@ -1,6 +1,6 @@
 // Firefox background script - uses global browser from polyfill
 import { checkForUpdates } from '../shared/version-check';
-import { AccountManager, AccountInfo } from '../shared/account-manager';
+import { AccountManager, AccountInfo, TOKEN_REFRESH_ALARM } from '../shared/account-manager';
 
 declare const browser: any;
 declare const __FIREFOX_CLIENT_ID__: string;
@@ -387,6 +387,7 @@ browser.runtime.onMessage.addListener(async (message: any, sender: any, sendResp
 
   if (message.action === 'addAccount') {
     const email = await accountManager.addAccount();
+    if (email) await scheduleTokenRefresh();
     return { success: !!email, email };
   }
 
@@ -461,6 +462,27 @@ async function injectBridgeScript(tabId: number): Promise<void> {
   }
 }
 
+// Schedule proactive token refresh alarm
+async function scheduleTokenRefresh() {
+  const delayMinutes = await accountManager.getNextRefreshDelay();
+  if (delayMinutes > 0) {
+    browser.alarms.create(TOKEN_REFRESH_ALARM, { delayInMinutes: delayMinutes });
+    console.log(`[Firefox Background] Token refresh alarm scheduled in ${delayMinutes} minutes`);
+  }
+}
+
+// Handle alarm events
+browser.alarms.onAlarm.addListener(async (alarm: any) => {
+  if (alarm.name === TOKEN_REFRESH_ALARM) {
+    console.log('[Firefox Background] Token refresh alarm fired');
+    const nextDelay = await accountManager.refreshExpiringTokens();
+    if (nextDelay > 0) {
+      browser.alarms.create(TOKEN_REFRESH_ALARM, { delayInMinutes: nextDelay });
+      console.log(`[Firefox Background] Next refresh alarm in ${nextDelay} minutes`);
+    }
+  }
+});
+
 // Initialize on install/startup
 async function initialize() {
   console.log('[Firefox Background] Initializing...');
@@ -470,6 +492,9 @@ async function initialize() {
   if (migrated) {
     console.log('[Firefox Background] Migration from single-account completed');
   }
+
+  // Schedule proactive token refresh
+  await scheduleTokenRefresh();
 
   // Check for updates
   const manifest = browser.runtime.getManifest();

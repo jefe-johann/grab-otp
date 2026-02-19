@@ -1,5 +1,5 @@
 // Chrome background script - uses launchWebAuthFlow for multi-account support
-import { AccountManager } from '../shared/account-manager';
+import { AccountManager, TOKEN_REFRESH_ALARM } from '../shared/account-manager';
 
 declare const __CHROME_CLIENT_ID__: string;
 declare const __CHROME_CLIENT_SECRET__: string;
@@ -240,6 +240,7 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   if (message.action === 'addAccount') {
     (async () => {
       const email = await accountManager.addAccount();
+      if (email) await scheduleTokenRefresh();
       sendResponse({ success: !!email, email });
     })();
     return true;
@@ -321,6 +322,27 @@ async function checkForUpdates(currentVersion: string): Promise<void> {
   }
 }
 
+// Schedule proactive token refresh alarm
+async function scheduleTokenRefresh() {
+  const delayMinutes = await accountManager.getNextRefreshDelay();
+  if (delayMinutes > 0) {
+    chrome.alarms.create(TOKEN_REFRESH_ALARM, { delayInMinutes: delayMinutes });
+    console.log(`[Chrome Background] Token refresh alarm scheduled in ${delayMinutes} minutes`);
+  }
+}
+
+// Handle alarm events
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === TOKEN_REFRESH_ALARM) {
+    console.log('[Chrome Background] Token refresh alarm fired');
+    const nextDelay = await accountManager.refreshExpiringTokens();
+    if (nextDelay > 0) {
+      chrome.alarms.create(TOKEN_REFRESH_ALARM, { delayInMinutes: nextDelay });
+      console.log(`[Chrome Background] Next refresh alarm in ${nextDelay} minutes`);
+    }
+  }
+});
+
 // Initialize on install/startup
 async function initialize() {
   console.log('[Chrome Background] Initializing...');
@@ -332,6 +354,9 @@ async function initialize() {
   if (migrated) {
     console.log('[Chrome Background] Migration from single-account completed');
   }
+
+  // Schedule proactive token refresh
+  await scheduleTokenRefresh();
 
   // Check for updates
   const manifest = chrome.runtime.getManifest();

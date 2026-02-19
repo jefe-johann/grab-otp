@@ -9,6 +9,7 @@
     "tabs",
     "storage",
     "identity",
+    "alarms",
     "https://www.googleapis.com/*",
     "https://accounts.google.com/*"
   ],

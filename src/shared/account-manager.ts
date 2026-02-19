@@ -34,6 +34,8 @@ type StorageAPI = {
   };
 };
 
+export const TOKEN_REFRESH_ALARM = 'token-refresh';
+
 type IdentityAPI = {
   getRedirectURL: () => string;
   launchWebAuthFlow: (details: { url: string; interactive: boolean }) => Promise<string>;
@@ -172,7 +174,8 @@ export class AccountManager {
       await this.setActiveAccount(email);
     }
 
-    console.log('[AccountManager] Account added/updated:', email);
+    console.log('[AccountManager] Account added/updated:', email,
+      '| refreshToken:', accounts[email].refreshToken ? 'present' : 'MISSING (token refresh will not work)');
     return email;
   }
 
@@ -488,5 +491,90 @@ export class AccountManager {
       clientSecret,
       redirectUri: this.identity.getRedirectURL()
     };
+  }
+
+  /**
+   * Proactively refresh tokens that are about to expire.
+   * Called by alarm handler in background scripts.
+   * Returns the delay in minutes until the next refresh should be scheduled.
+   */
+  async refreshExpiringTokens(): Promise<number> {
+    const accounts = await this.getAllAccounts();
+    const emails = Object.keys(accounts);
+
+    if (emails.length === 0) {
+      console.log('[AccountManager] No accounts to refresh');
+      return 0;
+    }
+
+    const now = Date.now();
+    const TEN_MINUTES = 10 * 60 * 1000;
+    let earliestExpiry = Infinity;
+
+    for (const email of emails) {
+      const account = accounts[email];
+
+      // Refresh any token expiring within 10 minutes
+      if (account.accessTokenExpires < now + TEN_MINUTES && account.refreshToken) {
+        console.log('[AccountManager] Proactively refreshing token for:', email);
+        const newTokenData = await refreshToken(
+          account.refreshToken,
+          this.oauthConfig.clientId,
+          this.oauthConfig.clientSecret
+        );
+
+        if (newTokenData) {
+          accounts[email] = {
+            ...accounts[email],
+            accessToken: newTokenData.accessToken,
+            accessTokenExpires: newTokenData.accessTokenExpires,
+            lastUsedAt: now
+          };
+          console.log('[AccountManager] Proactive refresh succeeded for:', email);
+        } else {
+          console.log('[AccountManager] Proactive refresh failed for:', email);
+        }
+      }
+
+      // Track the earliest expiry for scheduling the next alarm
+      if (accounts[email].accessTokenExpires > now) {
+        earliestExpiry = Math.min(earliestExpiry, accounts[email].accessTokenExpires);
+      }
+    }
+
+    // Save any updated tokens
+    await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
+
+    // Return minutes until 5 min before earliest expiry (minimum 1 minute)
+    if (earliestExpiry === Infinity) {
+      return 0;
+    }
+    const msUntilRefresh = earliestExpiry - now - (5 * 60 * 1000);
+    return Math.max(1, Math.round(msUntilRefresh / 60000));
+  }
+
+  /**
+   * Calculate delay in minutes for the next token refresh alarm.
+   * Returns 0 if no accounts need refresh scheduling.
+   */
+  async getNextRefreshDelay(): Promise<number> {
+    const accounts = await this.getAllAccounts();
+    const now = Date.now();
+    let earliestExpiry = Infinity;
+
+    for (const email of Object.keys(accounts)) {
+      const expiry = accounts[email].accessTokenExpires;
+      if (expiry > now) {
+        earliestExpiry = Math.min(earliestExpiry, expiry);
+      }
+    }
+
+    if (earliestExpiry === Infinity) {
+      return 0;
+    }
+
+    // Schedule 5 minutes before expiry, minimum 1 minute from now
+    const msUntilRefresh = earliestExpiry - now - (5 * 60 * 1000);
+    return Math.max(1, Math.round(msUntilRefresh / 60000));
   }
 }
