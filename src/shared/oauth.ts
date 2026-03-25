@@ -6,7 +6,8 @@ import { generateCodeVerifier, generateCodeChallenge, exchangeCodeForTokens, ref
 // Re-export PKCE utilities for convenience
 export { generateCodeVerifier, generateCodeChallenge, exchangeCodeForTokens, refreshAccessToken };
 
-const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email';
+export const REQUIRED_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+export const GMAIL_SCOPE = `${REQUIRED_SCOPE} https://www.googleapis.com/auth/userinfo.email`;
 
 export interface OAuthConfig {
   clientId: string;
@@ -18,12 +19,32 @@ export interface TokenData {
   accessToken: string;
   accessTokenExpires: number;
   refreshToken?: string;
+  grantedScopes?: string;
 }
 
 export interface UserInfo {
   email: string;
   name?: string;
   picture?: string;
+}
+
+/**
+ * Retrieve the granted scopes for an access token via Google's tokeninfo endpoint.
+ * Unauthenticated endpoint — safe to call without additional permissions.
+ */
+export async function getTokenScopes(accessToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
+    );
+    if (!response.ok) {
+      return null;
+    }
+    const data = await response.json();
+    return data.scope || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -97,7 +118,8 @@ export async function performPKCEAuth(
     return {
       accessToken: tokens.access_token,
       accessTokenExpires: Date.now() + ((tokens.expires_in - 300) * 1000), // 5 min buffer
-      refreshToken: tokens.refresh_token
+      refreshToken: tokens.refresh_token,
+      grantedScopes: tokens.scope
     };
   } catch (error) {
     console.error('[OAuth] PKCE auth error:', error);
@@ -146,10 +168,14 @@ export async function attemptSilentAuth(
       return null;
     }
 
+    // Implicit flow doesn't include scope in the fragment — fetch it separately
+    const scopes = await getTokenScopes(token);
+
     return {
       accessToken: token,
-      accessTokenExpires: Date.now() + ((parseInt(expiresIn || '3600') - 300) * 1000)
+      accessTokenExpires: Date.now() + ((parseInt(expiresIn || '3600') - 300) * 1000),
       // No refresh token from implicit flow
+      grantedScopes: scopes ?? undefined
     };
   } catch (error) {
     // Silent auth failure is expected if no valid session
@@ -175,8 +201,9 @@ export async function refreshToken(
 
     return {
       accessToken: tokens.access_token,
-      accessTokenExpires: Date.now() + ((tokens.expires_in - 300) * 1000)
+      accessTokenExpires: Date.now() + ((tokens.expires_in - 300) * 1000),
       // Refresh token doesn't change on refresh
+      grantedScopes: tokens.scope
     };
   } catch (error) {
     console.error('[OAuth] Token refresh error:', error);

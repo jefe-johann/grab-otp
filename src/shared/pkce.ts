@@ -50,6 +50,7 @@ export async function exchangeCodeForTokens(
   access_token: string;
   refresh_token?: string;
   expires_in: number;
+  scope?: string;
 } | null> {
   try {
     const params: Record<string, string> = {
@@ -96,6 +97,7 @@ export async function refreshAccessToken(
 ): Promise<{
   access_token: string;
   expires_in: number;
+  scope?: string;
 } | null> {
   try {
     const params: Record<string, string> = {

@@ -1,13 +1,14 @@
 // Account Manager for multi-account Gmail support
 // Handles storage, retrieval, and management of multiple Gmail accounts
 
-import { performPKCEAuth, attemptSilentAuth, refreshToken, getUserEmail, OAuthConfig, TokenData } from './oauth';
+import { performPKCEAuth, attemptSilentAuth, refreshToken, getUserEmail, getTokenScopes, OAuthConfig, TokenData, REQUIRED_SCOPE } from './oauth';
 
 export interface AccountInfo {
   email: string;
   accessToken: string;
   accessTokenExpires: number;
   refreshToken?: string;
+  grantedScopes?: string;
   addedAt: number;
   lastUsedAt: number;
 }
@@ -151,6 +152,12 @@ export class AccountManager {
       return null;
     }
 
+    // Validate scopes before storing
+    if (!await this.hasRequiredScope(tokenData)) {
+      console.error('[AccountManager] Token lacks required scope — aborting addAccount');
+      return null;
+    }
+
     // Store the account
     const accounts = await this.getAllAccounts();
     const existingAccount = accounts[email];
@@ -162,6 +169,7 @@ export class AccountManager {
       accessTokenExpires: tokenData.accessTokenExpires,
       // Keep an existing refresh token if Google doesn't return one during re-auth.
       refreshToken: tokenData.refreshToken || existingAccount?.refreshToken,
+      grantedScopes: tokenData.grantedScopes,
       addedAt: existingAccount?.addedAt || now, // Preserve original add date if re-authenticating
       lastUsedAt: now
     };
@@ -234,18 +242,23 @@ export class AccountManager {
       );
 
       if (newTokenData) {
-        // Update stored token
-        const accounts = await this.getAllAccounts();
-        accounts[email] = {
-          ...accounts[email],
-          accessToken: newTokenData.accessToken,
-          accessTokenExpires: newTokenData.accessTokenExpires,
-          lastUsedAt: Date.now()
-        };
-        await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
+        if (!await this.hasRequiredScope(newTokenData)) {
+          console.warn('[AccountManager] Refreshed token lacks required scope for:', email, '— falling through to silent auth');
+        } else {
+          // Update stored token
+          const accounts = await this.getAllAccounts();
+          accounts[email] = {
+            ...accounts[email],
+            accessToken: newTokenData.accessToken,
+            accessTokenExpires: newTokenData.accessTokenExpires,
+            grantedScopes: newTokenData.grantedScopes,
+            lastUsedAt: Date.now()
+          };
+          await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
 
-        console.log('[AccountManager] Token refreshed for:', email);
-        return newTokenData.accessToken;
+          console.log('[AccountManager] Token refreshed for:', email);
+          return newTokenData.accessToken;
+        }
       }
 
       console.log('[AccountManager] Token refresh failed for:', email);
@@ -262,18 +275,23 @@ export class AccountManager {
       // Verify this is the same account
       const silentEmail = await getUserEmail(silentTokenData.accessToken);
       if (silentEmail === email) {
-        // Update stored token
-        const accounts = await this.getAllAccounts();
-        accounts[email] = {
-          ...accounts[email],
-          accessToken: silentTokenData.accessToken,
-          accessTokenExpires: silentTokenData.accessTokenExpires,
-          lastUsedAt: Date.now()
-        };
-        await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
+        if (!await this.hasRequiredScope(silentTokenData)) {
+          console.warn('[AccountManager] Silent auth token lacks required scope for:', email, '— falling through to interactive re-auth');
+        } else {
+          // Update stored token
+          const accounts = await this.getAllAccounts();
+          accounts[email] = {
+            ...accounts[email],
+            accessToken: silentTokenData.accessToken,
+            accessTokenExpires: silentTokenData.accessTokenExpires,
+            grantedScopes: silentTokenData.grantedScopes,
+            lastUsedAt: Date.now()
+          };
+          await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
 
-        console.log('[AccountManager] Silent auth succeeded for:', email);
-        return silentTokenData.accessToken;
+          console.log('[AccountManager] Silent auth succeeded for:', email);
+          return silentTokenData.accessToken;
+        }
       }
     }
 
@@ -289,6 +307,10 @@ export class AccountManager {
       const newEmail = await getUserEmail(interactiveTokenData.accessToken);
 
       if (newEmail === email) {
+        if (!await this.hasRequiredScope(interactiveTokenData)) {
+          console.error('[AccountManager] Interactive re-auth token lacks required scope for:', email);
+          return null;
+        }
         // Same account - update stored token
         const accounts = await this.getAllAccounts();
         accounts[email] = {
@@ -296,6 +318,7 @@ export class AccountManager {
           accessToken: interactiveTokenData.accessToken,
           accessTokenExpires: interactiveTokenData.accessTokenExpires,
           refreshToken: interactiveTokenData.refreshToken || accounts[email].refreshToken,
+          grantedScopes: interactiveTokenData.grantedScopes,
           lastUsedAt: Date.now()
         };
         await this.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: accounts });
@@ -305,6 +328,10 @@ export class AccountManager {
       } else if (newEmail) {
         // Different account selected - add it as new account
         console.log('[AccountManager] User selected different account:', newEmail, 'instead of:', email);
+        if (!await this.hasRequiredScope(interactiveTokenData)) {
+          console.error('[AccountManager] Interactive re-auth token lacks required scope for new account:', newEmail);
+          return null;
+        }
         const accounts = await this.getAllAccounts();
         const now = Date.now();
 
@@ -313,6 +340,7 @@ export class AccountManager {
           accessToken: interactiveTokenData.accessToken,
           accessTokenExpires: interactiveTokenData.accessTokenExpires,
           refreshToken: interactiveTokenData.refreshToken,
+          grantedScopes: interactiveTokenData.grantedScopes,
           addedAt: accounts[newEmail]?.addedAt || now,
           lastUsedAt: now
         };
@@ -494,6 +522,30 @@ export class AccountManager {
   }
 
   /**
+   * Check whether a token includes the required Gmail scope.
+   * Falls back to the tokeninfo API if scope data is missing.
+   * Returns false when scope cannot be determined (safe default).
+   */
+  private async hasRequiredScope(tokenData: TokenData): Promise<boolean> {
+    let scopes = tokenData.grantedScopes;
+
+    if (!scopes) {
+      scopes = await getTokenScopes(tokenData.accessToken) ?? undefined;
+    }
+
+    if (!scopes) {
+      console.warn('[AccountManager] Could not determine token scopes — rejecting token');
+      return false;
+    }
+
+    const hasScope = scopes.split(' ').includes(REQUIRED_SCOPE);
+    if (!hasScope) {
+      console.warn('[AccountManager] Token lacks required scope:', REQUIRED_SCOPE, '— granted:', scopes);
+    }
+    return hasScope;
+  }
+
+  /**
    * Proactively refresh tokens that are about to expire.
    * Called by alarm handler in background scripts.
    * Returns the delay in minutes until the next refresh should be scheduled.
@@ -524,13 +576,18 @@ export class AccountManager {
         );
 
         if (newTokenData) {
-          accounts[email] = {
-            ...accounts[email],
-            accessToken: newTokenData.accessToken,
-            accessTokenExpires: newTokenData.accessTokenExpires,
-            lastUsedAt: now
-          };
-          console.log('[AccountManager] Proactive refresh succeeded for:', email);
+          if (!await this.hasRequiredScope(newTokenData)) {
+            console.warn('[AccountManager] Proactively refreshed token lacks required scope for:', email, '— keeping existing token');
+          } else {
+            accounts[email] = {
+              ...accounts[email],
+              accessToken: newTokenData.accessToken,
+              accessTokenExpires: newTokenData.accessTokenExpires,
+              grantedScopes: newTokenData.grantedScopes,
+              lastUsedAt: now
+            };
+            console.log('[AccountManager] Proactive refresh succeeded for:', email);
+          }
         } else {
           console.log('[AccountManager] Proactive refresh failed for:', email);
         }
