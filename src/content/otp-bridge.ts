@@ -1,28 +1,24 @@
 // Minimal bridge content script for OTP auto-fill
 // Injected immediately on user click to maintain activeTab permission
-// Receives OTP data via long-lived port when Gmail fetch completes
+// Receives OTP data via direct message from popup
 
 console.log('[OTP Bridge] Content script loaded on:', window.location.href);
 
-// Establish long-lived connection to background script
-const port = chrome.runtime.connect({ name: 'otpBridge' });
-
-port.onMessage.addListener((message) => {
+// Listen for direct messages from popup (more reliable than ports)
+chrome.runtime.onMessage.addListener((message: { action: string; otp?: string }, _sender, sendResponse) => {
   console.log('[OTP Bridge] Received message:', message.action);
-  
+
   if (message.action === 'fillOTP' && message.otp) {
     fillOTPCode(message.otp);
+    sendResponse({ success: true });
   }
+  return true;
 });
 
-port.onDisconnect.addListener(() => {
-  console.log('[OTP Bridge] Port disconnected');
-});
-
-// Simple OTP filling function (can be enhanced later)
-async function fillOTPCode(otpCode: string): Promise<void> {
+// Simple OTP filling function
+function fillOTPCode(otpCode: string): void {
   console.log('[OTP Bridge] Attempting to fill OTP (' + otpCode.length + ' digits)');
-  
+
   // Try common OTP input selectors
   const selectors = [
     'input[autocomplete="one-time-code"]',
@@ -31,29 +27,25 @@ async function fillOTPCode(otpCode: string): Promise<void> {
     'input[type="number"]',
     'input:not([type])'
   ];
-  
+
   for (const selector of selectors) {
     const inputs = document.querySelectorAll(selector) as NodeListOf<HTMLInputElement>;
-    
+
     for (const input of inputs) {
       if (input.offsetParent !== null && !input.disabled && !input.readOnly) {
         console.log('[OTP Bridge] Filling input (redacted)');
-        
+
         // Fill the input
         input.value = otpCode;
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
         input.focus();
-        
-        // Send success message back
-        port.postMessage({ action: 'fillResult', success: true });
         return;
       }
     }
   }
-  
+
   console.log('[OTP Bridge] No suitable input found');
-  port.postMessage({ action: 'fillResult', success: false, error: 'No input found' });
 }
 
 console.log('[OTP Bridge] Ready for OTP data');

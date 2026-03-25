@@ -1,4 +1,8 @@
-// Using Chrome APIs directly for better compatibility
+// Chrome background script - uses launchWebAuthFlow for multi-account support
+import { AccountManager, TOKEN_REFRESH_ALARM } from '../shared/account-manager';
+
+declare const __CHROME_CLIENT_ID__: string;
+declare const __CHROME_CLIENT_SECRET__: string;
 
 interface FetchOTPMessage {
   action: 'fetchOTP';
@@ -33,10 +37,55 @@ interface GmailMessageResponse {
   snippet: string;
 }
 
+// Chrome identity API wrapper to match the interface expected by AccountManager
+const chromeIdentity = {
+  getRedirectURL: () => chrome.identity.getRedirectURL(),
+  launchWebAuthFlow: (details: { url: string; interactive: boolean }): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow(details, (responseUrl) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(responseUrl || '');
+        }
+      });
+    });
+  }
+};
+
+// Chrome storage API wrapper
+const chromeStorage = {
+  local: {
+    get: (keys: string | string[]): Promise<Record<string, unknown>> => {
+      return new Promise((resolve) => {
+        chrome.storage.local.get(keys, resolve);
+      });
+    },
+    set: (items: Record<string, unknown>): Promise<void> => {
+      return new Promise((resolve) => {
+        chrome.storage.local.set(items, resolve);
+      });
+    },
+    remove: (keys: string | string[]): Promise<void> => {
+      return new Promise((resolve) => {
+        chrome.storage.local.remove(keys, resolve);
+      });
+    }
+  }
+};
+
+// Initialize AccountManager
+const accountManager = new AccountManager(
+  chromeStorage,
+  chromeIdentity,
+  __CHROME_CLIENT_ID__,
+  __CHROME_CLIENT_SECRET__
+);
+
 class GmailOTPFetcher {
   private readonly OTP_PATTERNS = [
     /\b(\d{6})\b/g,           // 6-digit codes
-    /\b(\d{4})\b/g,           // 4-digit codes  
+    /\b(\d{4})\b/g,           // 4-digit codes
     /\b(\d{8})\b/g,           // 8-digit codes
     /verification code[:\s]*(\d+)/gi,
     /your code[:\s]*(\d+)/gi,
@@ -46,20 +95,31 @@ class GmailOTPFetcher {
 
   public async fetchOTPForDomain(domain: string): Promise<OTPResponse> {
     try {
-      const token = await this.getAccessToken();
-      if (!token) {
-        return { success: false, error: 'Gmail authentication required' };
+      // Get token from active account
+      console.log('[Chrome Background] Getting access token from AccountManager...');
+      const tokenInfo = await accountManager.getActiveAccountToken();
+
+      if (!tokenInfo) {
+        // Check if we have any accounts
+        const hasAccounts = await accountManager.hasAccounts();
+        if (!hasAccounts) {
+          return { success: false, error: 'No Gmail account configured. Click extension icon to add an account.' };
+        }
+        return { success: false, error: 'Gmail authentication expired. Please re-authenticate.' };
       }
 
-      const messages = await this.searchGmailMessages(token, domain);
+      const { token, email } = tokenInfo;
+      console.log('[Chrome Background] Using account:', email);
+
+      const messages = await this.searchGmailMessages(token, email, domain);
       if (!messages || messages.length === 0) {
         return { success: false, error: `No recent emails found for ${domain}` };
       }
 
       for (const message of messages.slice(0, 5)) {
-        const messageDetail = await this.getMessageDetail(token, message.id);
+        const messageDetail = await this.getMessageDetail(token, email, message.id);
         const otp = this.extractOTP(messageDetail);
-        
+
         if (otp) {
           return { success: true, otp };
         }
@@ -67,41 +127,16 @@ class GmailOTPFetcher {
 
       return { success: false, error: 'No OTP found in recent emails' };
     } catch (error) {
-      console.error('Error fetching OTP:', error);
+      console.error('[Chrome Background] Error fetching OTP:', error);
       return { success: false, error: (error as Error).message };
     }
   }
 
-  private async getAccessToken(): Promise<string | null> {
-    try {
-      // Use chrome.identity directly for better compatibility
-      return new Promise((resolve, reject) => {
-        if (typeof chrome !== 'undefined' && chrome.identity) {
-          chrome.identity.getAuthToken({
-            interactive: true,
-            scopes: ['https://www.googleapis.com/auth/gmail.readonly']
-          }, (token) => {
-            if (chrome.runtime.lastError) {
-              console.error('Authentication error:', chrome.runtime.lastError);
-              reject(chrome.runtime.lastError);
-            } else {
-              resolve(token || null);
-            }
-          });
-        } else {
-          reject(new Error('Chrome identity API not available'));
-        }
-      });
-    } catch (error) {
-      console.error('Authentication error:', error);
-      return null;
-    }
-  }
-
-  private async searchGmailMessages(token: string, domain: string): Promise<GmailMessage[]> {
+  private async searchGmailMessages(token: string, userEmail: string, domain: string): Promise<GmailMessage[]> {
     const query = `from:${domain} OR from:@${domain} newer_than:30m`;
-    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=10`;
-    
+    // Use specific user email instead of 'me' for multi-account support
+    const url = `https://www.googleapis.com/gmail/v1/users/${encodeURIComponent(userEmail)}/messages?q=${encodeURIComponent(query)}&maxResults=10`;
+
     const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -110,16 +145,19 @@ class GmailOTPFetcher {
     });
 
     if (!response.ok) {
-      throw new Error(`Gmail API error: ${response.status}`);
+      const errorBody = await response.text();
+      console.error('[Chrome Background] Gmail API error body:', errorBody);
+      throw new Error(`Gmail API error: ${response.status} - ${errorBody}`);
     }
 
     const data: GmailSearchResponse = await response.json();
     return data.messages || [];
   }
 
-  private async getMessageDetail(token: string, messageId: string): Promise<GmailMessageResponse> {
-    const url = `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}`;
-    
+  private async getMessageDetail(token: string, userEmail: string, messageId: string): Promise<GmailMessageResponse> {
+    // Use specific user email instead of 'me' for multi-account support
+    const url = `https://www.googleapis.com/gmail/v1/users/${encodeURIComponent(userEmail)}/messages/${messageId}`;
+
     const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -136,7 +174,7 @@ class GmailOTPFetcher {
 
   private extractOTP(message: GmailMessageResponse): string | null {
     const textContent = this.getMessageTextContent(message);
-    
+
     for (const pattern of this.OTP_PATTERNS) {
       const matches = textContent.match(pattern);
       if (matches) {
@@ -149,18 +187,18 @@ class GmailOTPFetcher {
         }
       }
     }
-    
+
     return null;
   }
 
   private getMessageTextContent(message: GmailMessageResponse): string {
     let content = message.snippet || '';
-    
+
     // Try to get the full message body
     if (message.payload.body?.data) {
       content += ' ' + this.decodeBase64(message.payload.body.data);
     }
-    
+
     // Check message parts for text content
     if (message.payload.parts) {
       for (const part of message.payload.parts) {
@@ -169,7 +207,7 @@ class GmailOTPFetcher {
         }
       }
     }
-    
+
     return content;
   }
 
@@ -183,53 +221,51 @@ class GmailOTPFetcher {
       return '';
     }
   }
-
-  // Simplified: just fetch OTP, let popup handle auto-fill injection
 }
 
 const otpFetcher = new GmailOTPFetcher();
 
-// Store active ports for OTP bridge communication
-const activePorts = new Map<number, chrome.runtime.Port>();
-
-// Removed chrome.action.onClicked handler - auto-fill now happens from popup button
-
-// Handle long-lived port connections from bridge content scripts
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === 'otpBridge') {
-    console.log('[Background] Bridge connected from tab:', port.sender?.tab?.id);
-    
-    if (port.sender?.tab?.id) {
-      activePorts.set(port.sender.tab.id, port);
-      
-      port.onDisconnect.addListener(() => {
-        console.log('[Background] Bridge disconnected from tab:', port.sender?.tab?.id);
-        if (port.sender?.tab?.id) {
-          activePorts.delete(port.sender.tab.id);
-        }
-      });
-    }
-  }
-});
-
 // Handle popup messages
 chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
+  // Account management messages
+  if (message.action === 'getAccounts') {
+    (async () => {
+      const accounts = await accountManager.getAllAccounts();
+      const activeEmail = await accountManager.getActiveAccountEmail();
+      sendResponse({ accounts, activeEmail });
+    })();
+    return true;
+  }
+
+  if (message.action === 'addAccount') {
+    (async () => {
+      const email = await accountManager.addAccount();
+      if (email) await scheduleTokenRefresh();
+      sendResponse({ success: !!email, email });
+    })();
+    return true;
+  }
+
+  if (message.action === 'removeAccount') {
+    (async () => {
+      await accountManager.removeAccount(message.email);
+      sendResponse({ success: true });
+    })();
+    return true;
+  }
+
+  if (message.action === 'setActiveAccount') {
+    (async () => {
+      await accountManager.setActiveAccount(message.email);
+      sendResponse({ success: true });
+    })();
+    return true;
+  }
+
   if (message.action === 'fetchOTP') {
     // Background only fetches OTP, popup handles bridge injection
     otpFetcher.fetchOTPForDomain(message.domain).then(sendResponse);
     return true; // Required to indicate async response
-  }
-  
-  if (message.action === 'sendOTPToBridge') {
-    // Forward OTP to bridge via port
-    console.log('[Background] Forwarding OTP to bridge for tab:', message.tabId);
-    const port = activePorts.get(message.tabId);
-    if (port && message.otp) {
-      console.log('[Background] Sending OTP to bridge via port');
-      port.postMessage({ action: 'fillOTP', otp: message.otp });
-    } else {
-      console.log('[Background] No active port for tab:', message.tabId);
-    }
   }
 });
 
@@ -237,9 +273,9 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
 async function checkForUpdates(currentVersion: string): Promise<void> {
   try {
     // Check cache first (24 hour TTL)
-    const cached = await chrome.storage.local.get(['version_check']);
+    const cached = await chromeStorage.local.get(['version_check']);
     if (cached.version_check &&
-        Date.now() - cached.version_check.lastChecked < 24 * 60 * 60 * 1000) {
+        Date.now() - (cached.version_check as any).lastChecked < 24 * 60 * 60 * 1000) {
       return;
     }
 
@@ -258,8 +294,8 @@ async function checkForUpdates(currentVersion: string): Promise<void> {
     const latestVersion = release.tag_name.replace(/^v/, '');
 
     // Compare versions
-    const currentParts = currentVersion.split('.').map(n => parseInt(n, 10));
-    const latestParts = latestVersion.split('.').map(n => parseInt(n, 10));
+    const currentParts = currentVersion.split('.').map((n: string) => parseInt(n, 10));
+    const latestParts = latestVersion.split('.').map((n: string) => parseInt(n, 10));
     let updateAvailable = false;
 
     for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
@@ -279,21 +315,62 @@ async function checkForUpdates(currentVersion: string): Promise<void> {
       lastChecked: Date.now()
     };
 
-    await chrome.storage.local.set({ version_check: versionInfo });
+    await chromeStorage.local.set({ version_check: versionInfo });
     console.log('Version check:', versionInfo);
   } catch (error) {
     console.log('Version check failed (non-critical):', error);
   }
 }
 
-// Check for updates on startup
-chrome.runtime.onInstalled.addListener(async () => {
+// Schedule proactive token refresh alarm
+async function scheduleTokenRefresh() {
+  const delayMinutes = await accountManager.getNextRefreshDelay();
+  if (delayMinutes > 0) {
+    chrome.alarms.create(TOKEN_REFRESH_ALARM, { delayInMinutes: delayMinutes });
+    console.log(`[Chrome Background] Token refresh alarm scheduled in ${delayMinutes} minutes`);
+  }
+}
+
+// Handle alarm events
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === TOKEN_REFRESH_ALARM) {
+    console.log('[Chrome Background] Token refresh alarm fired');
+    const nextDelay = await accountManager.refreshExpiringTokens();
+    if (nextDelay > 0) {
+      chrome.alarms.create(TOKEN_REFRESH_ALARM, { delayInMinutes: nextDelay });
+      console.log(`[Chrome Background] Next refresh alarm in ${nextDelay} minutes`);
+    }
+  }
+});
+
+// Initialize on install/startup
+async function initialize() {
+  console.log('[Chrome Background] Initializing...');
+
+  // Run migration from legacy chrome.identity.getAuthToken to new multi-account storage
+  // Note: Legacy Chrome tokens from getAuthToken cannot be migrated as we don't have access
+  // to them directly. Users will need to re-authenticate.
+  const migrated = await accountManager.migrateFromSingleAccount();
+  if (migrated) {
+    console.log('[Chrome Background] Migration from single-account completed');
+  }
+
+  // Schedule proactive token refresh
+  await scheduleTokenRefresh();
+
+  // Check for updates
   const manifest = chrome.runtime.getManifest();
   await checkForUpdates(manifest.version);
+}
+
+// Check for updates on startup
+chrome.runtime.onInstalled.addListener(async () => {
+  console.log('Extension installed/updated');
+  await initialize();
 });
 
 // Also check on startup (when browser starts)
 chrome.runtime.onStartup.addListener(async () => {
-  const manifest = chrome.runtime.getManifest();
-  await checkForUpdates(manifest.version);
+  console.log('Browser started');
+  await initialize();
 });

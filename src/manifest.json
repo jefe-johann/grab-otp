@@ -9,11 +9,13 @@
     "tabs",
     "storage",
     "identity",
-    "scripting"
+    "scripting",
+    "alarms"
   ],
   
   "host_permissions": [
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
   ],
   
   "background": {
@@ -38,10 +40,5 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  
-  "oauth2": {
-    "client_id": "__CHROME_CLIENT_ID__",
-    "scopes": ["https://www.googleapis.com/auth/gmail.readonly"]
   }
 }

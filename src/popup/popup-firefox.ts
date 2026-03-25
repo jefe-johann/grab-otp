@@ -15,6 +15,20 @@ interface OTPRequest {
   timestamp: number;
 }
 
+interface AccountInfo {
+  email: string;
+  accessToken: string;
+  accessTokenExpires: number;
+  refreshToken?: string;
+  addedAt: number;
+  lastUsedAt: number;
+}
+
+interface AccountsResponse {
+  accounts: Record<string, AccountInfo>;
+  activeEmail: string | null;
+}
+
 class FirefoxPopupController {
   private statusElement: HTMLElement;
   private grabButton: HTMLButtonElement;
@@ -30,6 +44,14 @@ class FirefoxPopupController {
   private overrideStatus: HTMLElement;
   private currentWebsiteDomain: string = '';
 
+  // Account selector elements
+  private accountEmail: HTMLElement;
+  private accountDropdownToggle: HTMLButtonElement;
+  private accountDropdown: HTMLElement;
+  private accountList: HTMLElement;
+  private addAccountBtn: HTMLButtonElement;
+  private isDropdownOpen: boolean = false;
+
   constructor() {
     this.statusElement = document.getElementById('status')!;
     this.grabButton = document.getElementById('grabOTP') as HTMLButtonElement;
@@ -43,10 +65,20 @@ class FirefoxPopupController {
     this.clearOverrideBtn = document.getElementById('clearOverride') as HTMLButtonElement;
     this.overrideStatus = document.getElementById('overrideStatus')!;
 
+    // Account selector elements
+    this.accountEmail = document.getElementById('accountEmail')!;
+    this.accountDropdownToggle = document.getElementById('accountDropdownToggle') as HTMLButtonElement;
+    this.accountDropdown = document.getElementById('accountDropdown')!;
+    this.accountList = document.getElementById('accountList')!;
+    this.addAccountBtn = document.getElementById('addAccountBtn') as HTMLButtonElement;
+
     this.init();
   }
 
   private async init() {
+    // Load accounts first
+    await this.loadAccounts();
+
     // Check for updates
     await this.checkForUpdates();
     await this.displayCurrentDomain();
@@ -65,8 +97,143 @@ class FirefoxPopupController {
     });
     this.clearOverrideBtn.addEventListener('click', () => this.handleClearOverride());
 
+    // Account selector events
+    this.accountDropdownToggle.addEventListener('click', () => this.toggleAccountDropdown());
+    document.getElementById('accountRow')?.addEventListener('click', (e) => {
+      if (e.target !== this.accountDropdownToggle && !this.accountDropdownToggle.contains(e.target as Node)) {
+        this.toggleAccountDropdown();
+      }
+    });
+    this.addAccountBtn.addEventListener('click', () => this.handleAddAccount());
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (this.isDropdownOpen && !this.accountDropdown.contains(e.target as Node) &&
+          !document.getElementById('accountRow')?.contains(e.target as Node)) {
+        this.closeAccountDropdown();
+      }
+    });
+
     // Check for recent OTP results when popup opens
     await this.checkForRecentResults();
+  }
+
+  // Account management methods
+  private async loadAccounts() {
+    try {
+      const response = await browser.runtime.sendMessage({ action: 'getAccounts' }) as AccountsResponse;
+      this.renderAccounts(response.accounts, response.activeEmail);
+    } catch (error) {
+      console.error('Error loading accounts:', error);
+      this.accountEmail.textContent = 'Error loading accounts';
+      this.accountEmail.classList.add('no-account');
+    }
+  }
+
+  private renderAccounts(accounts: Record<string, AccountInfo>, activeEmail: string | null) {
+    const emails = Object.keys(accounts);
+
+    // Update main display
+    if (activeEmail && accounts[activeEmail]) {
+      this.accountEmail.textContent = activeEmail;
+      this.accountEmail.classList.remove('no-account');
+    } else if (emails.length > 0) {
+      // No active but has accounts - shouldn't happen normally
+      this.accountEmail.textContent = emails[0];
+      this.accountEmail.classList.remove('no-account');
+    } else {
+      this.accountEmail.textContent = 'No account connected';
+      this.accountEmail.classList.add('no-account');
+    }
+
+    // Render dropdown list
+    this.accountList.innerHTML = '';
+
+    emails.forEach(email => {
+      const isActive = email === activeEmail;
+      const item = document.createElement('div');
+      item.className = `account-item${isActive ? ' active' : ''}`;
+      item.innerHTML = `
+        ${isActive ? '<span class="account-item-check">✓</span>' : ''}
+        <span class="account-item-email">${email}</span>
+        <button class="account-remove-btn" title="Remove account" data-email="${email}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      `;
+
+      // Click to switch account
+      item.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (!target.closest('.account-remove-btn')) {
+          this.handleSwitchAccount(email);
+        }
+      });
+
+      // Remove button
+      const removeBtn = item.querySelector('.account-remove-btn');
+      removeBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.handleRemoveAccount(email);
+      });
+
+      this.accountList.appendChild(item);
+    });
+  }
+
+  private toggleAccountDropdown() {
+    this.isDropdownOpen = !this.isDropdownOpen;
+    this.accountDropdown.style.display = this.isDropdownOpen ? 'block' : 'none';
+    this.accountDropdownToggle.classList.toggle('open', this.isDropdownOpen);
+  }
+
+  private closeAccountDropdown() {
+    this.isDropdownOpen = false;
+    this.accountDropdown.style.display = 'none';
+    this.accountDropdownToggle.classList.remove('open');
+  }
+
+  private async handleAddAccount() {
+    this.closeAccountDropdown();
+    this.showStatus('Adding Gmail account...', 'loading');
+
+    try {
+      const response = await browser.runtime.sendMessage({ action: 'addAccount' });
+      if (response.success) {
+        this.showStatus(`Added account: ${response.email}`, 'success');
+        await this.loadAccounts();
+      } else {
+        this.showStatus('Failed to add account', 'error');
+      }
+    } catch (error) {
+      console.error('Error adding account:', error);
+      this.showStatus('Error adding account', 'error');
+    }
+  }
+
+  private async handleSwitchAccount(email: string) {
+    this.closeAccountDropdown();
+
+    try {
+      await browser.runtime.sendMessage({ action: 'setActiveAccount', email });
+      await this.loadAccounts();
+    } catch (error) {
+      console.error('Error switching account:', error);
+      this.showStatus('Error switching account', 'error');
+    }
+  }
+
+  private async handleRemoveAccount(email: string) {
+    if (!confirm(`Remove account ${email}?`)) {
+      return;
+    }
+
+    try {
+      await browser.runtime.sendMessage({ action: 'removeAccount', email });
+      await this.loadAccounts();
+    } catch (error) {
+      console.error('Error removing account:', error);
+      this.showStatus('Error removing account', 'error');
+    }
   }
 
   private async displayCurrentDomain() {
@@ -119,6 +286,13 @@ class FirefoxPopupController {
   }
 
   private async handleGrabOTP() {
+    // Check if we have any accounts first
+    const accountsResponse = await browser.runtime.sendMessage({ action: 'getAccounts' }) as AccountsResponse;
+    if (Object.keys(accountsResponse.accounts).length === 0) {
+      this.showStatus('Please add a Gmail account first', 'error');
+      return;
+    }
+
     this.setLoading(true);
     this.showStatus('Searching Gmail for OTP...', 'loading');
 
@@ -133,7 +307,7 @@ class FirefoxPopupController {
       // Check for domain override
       const override = await this.getOverride(websiteDomain);
       const searchDomain = override || websiteDomain;
-      
+
       // If auto-fill is enabled, inject bridge immediately via background
       if (this.autoFillCheckbox.checked) {
         try {
@@ -142,21 +316,20 @@ class FirefoxPopupController {
             action: 'injectBridge',
             tabId: tab.id
           });
-          
+
           if (!injectionResult.success) {
             throw new Error(injectionResult.error || 'Bridge injection failed');
           }
-          
+
           // Wait a moment for bridge to connect
           await new Promise(resolve => setTimeout(resolve, 100));
           console.log('[Firefox Popup] Bridge injected, now fetching OTP...');
         } catch (error) {
-          console.error('[Firefox Popup] Failed to inject bridge:', error);
-          this.showStatus('Auto-fill setup failed, using clipboard only', 'error');
-          // Continue with clipboard-only mode
+          // Just log the error - OTP will still be copied to clipboard
+          console.log('[Firefox Popup] Bridge injection skipped:', (error as Error).message);
         }
       }
-      
+
       // Send OTP fetch request (fire-and-forget style for Firefox)
       browser.runtime.sendMessage({
         action: 'fetchOTP',
@@ -168,7 +341,7 @@ class FirefoxPopupController {
 
       // Request sent, keep loading state and start polling for results
       this.startResultPolling();
-      
+
     } catch (error) {
       console.error('Error sending OTP request:', error);
       this.showStatus('Error: ' + (error as Error).message, 'error');
@@ -181,23 +354,22 @@ class FirefoxPopupController {
     try {
       const result = await browser.storage.local.get('latest_otp_result');
       const latestResult = result['latest_otp_result'];
-      
+
       if (latestResult && Date.now() - latestResult.timestamp < 60000) { // Within 1 minute
         if (latestResult.success && latestResult.otp) {
-          this.showStatus(`✅ ${latestResult.message}`, 'success');
+          this.showStatus(`${latestResult.message}`, 'success');
           // Auto-select the OTP text for easy copying
           this.statusElement.setAttribute('data-otp', latestResult.otp);
         } else {
-          this.showStatus(`❌ ${latestResult.message}`, 'error');
+          this.showStatus(`${latestResult.message}`, 'error');
         }
-        
+
         // Stop loading state and polling when result is shown
         this.setLoading(false);
         this.stopResultPolling();
-        
-        // Clear the result after showing it (badge clearing disabled)
+
+        // Clear the result after showing it
         await browser.storage.local.remove('latest_otp_result');
-        // await this.clearBadge(); // Disabled - no badges set anymore
       }
     } catch (error) {
       console.log('Could not check recent results:', error);
@@ -218,7 +390,7 @@ class FirefoxPopupController {
     this.resultPollingInterval = window.setInterval(async () => {
       await this.checkForRecentResults();
     }, 500);
-    
+
     // Stop polling after 30 seconds to avoid infinite polling
     setTimeout(() => {
       this.stopResultPolling();

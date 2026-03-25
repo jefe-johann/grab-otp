@@ -180,13 +180,207 @@
       color: #333;
       user-select: none;
     }
+
+    /* Account selector styles */
+    .account-selector {
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .account-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #f5f5f5;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .account-row:hover {
+      background: #eeeeee;
+    }
+
+    .account-email {
+      font-size: 13px;
+      color: #333;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .account-email.no-account {
+      color: #666;
+      font-style: italic;
+    }
+
+    .account-dropdown-toggle {
+      background: none;
+      border: none;
+      padding: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      transition: transform 0.2s;
+    }
+
+    .account-dropdown-toggle.open {
+      transform: rotate(180deg);
+    }
+
+    .account-dropdown-toggle svg {
+      width: 16px;
+      height: 16px;
+      fill: #666;
+    }
+
+    .account-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 100;
+      margin-top: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .account-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .account-item:last-child {
+      border-bottom: none;
+    }
+
+    .account-item:hover {
+      background: #f5f5f5;
+    }
+
+    .account-item.active {
+      background: #e3f2fd;
+    }
+
+    .account-item-email {
+      flex: 1;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-item-check {
+      color: #1976d2;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+
+    .account-remove-btn {
+      background: none;
+      border: none;
+      padding: 4px;
+      cursor: pointer;
+      opacity: 0.5;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+    }
+
+    .account-remove-btn:hover {
+      opacity: 1;
+    }
+
+    .account-remove-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: #c62828;
+    }
+
+    .add-account-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      color: #1976d2;
+      transition: background 0.2s;
+    }
+
+    .add-account-btn:hover {
+      background: #f5f5f5;
+    }
+
+    .add-account-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: #1976d2;
+    }
+
+    .update-banner {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: #856404;
+    }
+
+    .update-banner strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .update-banner a {
+      color: #856404;
+      text-decoration: underline;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>🔐 Grab OTP</h1>
   </div>
-  
+
+  <!-- Account Selector -->
+  <div class="account-selector">
+    <div id="accountRow" class="account-row">
+      <span id="accountEmail" class="account-email no-account">No account connected</span>
+      <button id="accountDropdownToggle" class="account-dropdown-toggle" title="Switch account">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+      </button>
+    </div>
+    <div id="accountDropdown" class="account-dropdown" style="display: none;">
+      <div id="accountList"></div>
+      <button id="addAccountBtn" class="add-account-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Gmail Account
+      </button>
+    </div>
+  </div>
+
+  <div id="updateBanner" class="update-banner" style="display: none;">
+    <strong>Update Available!</strong>
+    <span id="updateMessage"></span>
+    <a href="https://github.com/jefe-johann/grab-otp/releases/latest" target="_blank">Download Update</a>
+  </div>
+
   <div id="status" class="status" style="display: none;"></div>
   
   <button id="grabOTP" class="grab-button">

@@ -16,6 +16,7 @@ oauth-client-secret.json
 # Development documentation (backed up externally via build script)
 docs/
 CLAUDE.md
+AGENTS.md
 
 # OS generated files
 .DS_Store

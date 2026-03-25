@@ -3,35 +3,33 @@
 
 console.log('[Firefox OTP Bridge] Loading on:', window.location.href);
 
-// Establish connection to background
-const port = browser.runtime.connect({ name: 'firefoxOtpBridge' });
+// Listen for direct messages from popup (more reliable than ports)
+browser.runtime.onMessage.addListener((message: { action: string; otp?: string }, _sender, sendResponse) => {
+  console.log('[Firefox OTP Bridge] Received message:', message.action);
 
-port.onMessage.addListener((message: any) => {
   if (message.action === 'fillOTP' && message.otp) {
     fillOTPCode(message.otp);
+    sendResponse({ success: true });
   }
-});
-
-port.onDisconnect.addListener(() => {
-  console.log('[Firefox OTP Bridge] Port disconnected');
+  return true;
 });
 
 // Enhanced OTP filling function with React/Vue compatibility
-async function fillOTPCode(otpCode: string): Promise<void> {
+function fillOTPCode(otpCode: string): void {
   console.log('[Firefox OTP Bridge] Filling OTP (' + otpCode.length + ' digits)');
-  
+
   // OTP input selectors in priority order
   const selectors = [
     'input[autocomplete="one-time-code"]',
-    'input[inputmode="numeric"]', 
+    'input[inputmode="numeric"]',
     'input[type="text"]',
     'input[type="number"]',
     'input:not([type])'
   ];
-  
+
   for (const selector of selectors) {
     const inputs = document.querySelectorAll(selector) as NodeListOf<HTMLInputElement>;
-    
+
     for (const input of inputs) {
       // Check if input is visible and editable
       if (input.offsetParent !== null && !input.disabled && !input.readOnly) {
@@ -44,15 +42,14 @@ async function fillOTPCode(otpCode: string): Promise<void> {
             // Fallback if descriptor not available
             input.value = otpCode;
           }
-          
+
           // Dispatch events that modern frameworks expect
           input.dispatchEvent(new Event('input', { bubbles: true }));
           input.dispatchEvent(new Event('change', { bubbles: true }));
           input.dispatchEvent(new Event('keyup', { bubbles: true }));
           input.focus();
-          
+
           console.log('[Firefox OTP Bridge] OTP filled successfully');
-          port.postMessage({ action: 'fillResult', success: true });
           return;
         } catch (error) {
           console.error('[Firefox OTP Bridge] Error filling input:', error);
@@ -61,9 +58,8 @@ async function fillOTPCode(otpCode: string): Promise<void> {
       }
     }
   }
-  
+
   console.log('[Firefox OTP Bridge] No suitable input found');
-  port.postMessage({ action: 'fillResult', success: false, error: 'No input found' });
 }
 
 console.log('[Firefox OTP Bridge] Ready for OTP data');
