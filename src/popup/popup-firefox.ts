@@ -1,12 +1,6 @@
 // Firefox popup script - no imports, uses global browser from polyfill
 declare const browser: any;
 
-interface OTPResponse {
-  success: boolean;
-  otp?: string;
-  error?: string;
-}
-
 interface OTPRequest {
   action: string;
   domain: string;
@@ -525,3 +519,5 @@ class FirefoxPopupController {
 document.addEventListener('DOMContentLoaded', () => {
   new FirefoxPopupController();
 });
+
+export {};

@@ -278,7 +278,7 @@ export async function validateToken(accessToken: string): Promise<boolean> {
     );
 
     return response.ok;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

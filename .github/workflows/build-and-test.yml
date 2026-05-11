@@ -12,14 +12,14 @@ jobs:
     
     strategy:
       matrix:
-        node-version: [18, 20]
+        node-version: [20, 22]
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       
     - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
@@ -29,6 +29,12 @@ jobs:
       
     - name: Run TypeScript type checking
       run: npm run typecheck
+
+    - name: Run lint
+      run: npm run lint
+
+    - name: Run tests
+      run: npm run test
       
     - name: Build Chrome extension
       run: npm run build:chrome

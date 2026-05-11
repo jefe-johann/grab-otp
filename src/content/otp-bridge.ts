@@ -5,7 +5,11 @@
 console.log('[OTP Bridge] Content script loaded on:', window.location.href);
 
 // Listen for direct messages from popup (more reliable than ports)
-chrome.runtime.onMessage.addListener((message: { action: string; otp?: string }, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((
+  message: { action: string; otp?: string },
+  _sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: { success: boolean }) => void
+) => {
   console.log('[OTP Bridge] Received message:', message.action);
 
   if (message.action === 'fillOTP' && message.otp) {
@@ -49,3 +53,5 @@ function fillOTPCode(otpCode: string): void {
 }
 
 console.log('[OTP Bridge] Ready for OTP data');
+
+export {};

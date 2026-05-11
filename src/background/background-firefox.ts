@@ -1,17 +1,10 @@
 // Firefox background script - uses global browser from polyfill
 import { checkForUpdates } from '../shared/version-check';
-import { AccountManager, AccountInfo, TOKEN_REFRESH_ALARM } from '../shared/account-manager';
+import { AccountManager, TOKEN_REFRESH_ALARM } from '../shared/account-manager';
 
 declare const browser: any;
 declare const __FIREFOX_CLIENT_ID__: string;
 declare const __FIREFOX_CLIENT_SECRET__: string;
-
-interface FetchOTPMessage {
-  action: 'fetchOTP';
-  domain: string;
-  autoFill?: boolean;
-  timestamp: number;
-}
 
 interface OTPResponse {
   success: boolean;
@@ -377,7 +370,7 @@ class FirefoxGmailOTPFetcher {
 const firefoxOtpFetcher = new FirefoxGmailOTPFetcher();
 
 // Enhanced message handler
-browser.runtime.onMessage.addListener(async (message: any, sender: any, sendResponse: any) => {
+browser.runtime.onMessage.addListener(async (message: any, _sender: any, _sendResponse: any) => {
   // Account management messages
   if (message.action === 'getAccounts') {
     const accounts = await accountManager.getAllAccounts();
@@ -440,7 +433,7 @@ async function injectBridgeScript(tabId: number): Promise<void> {
     if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('moz-extension://')) {
       throw new Error('Cannot inject into system pages');
     }
-  } catch (error) {
+  } catch {
     throw new Error('Invalid tab or insufficient permissions');
   }
 

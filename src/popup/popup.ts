@@ -26,6 +26,14 @@ interface AccountsResponse {
   activeEmail: string | null;
 }
 
+type DomainOverrides = Record<string, string>;
+
+interface VersionInfo {
+  current: string;
+  latest: string;
+  updateAvailable: boolean;
+}
+
 class PopupController {
   private statusElement: HTMLElement;
   private grabButton: HTMLButtonElement;
@@ -262,7 +270,7 @@ class PopupController {
 
   private async loadAutoFillPreference() {
     try {
-      const result = await chrome.storage.local.get(['autoFillEnabled']);
+      const result = await chrome.storage.local.get<{ autoFillEnabled?: boolean }>(['autoFillEnabled']);
       this.autoFillCheckbox.checked = result.autoFillEnabled ?? true; // Default to true
     } catch (error) {
       console.error('Error loading auto-fill preference:', error);
@@ -386,7 +394,7 @@ class PopupController {
   // Domain override methods
   private async getOverride(websiteDomain: string): Promise<string | null> {
     try {
-      const result = await chrome.storage.local.get(['domain_overrides']);
+      const result = await chrome.storage.local.get<{ domain_overrides?: DomainOverrides }>(['domain_overrides']);
       const overrides = result.domain_overrides || {};
       return overrides[websiteDomain] || null;
     } catch (error) {
@@ -397,7 +405,7 @@ class PopupController {
 
   private async saveOverride(websiteDomain: string, emailDomain: string): Promise<void> {
     try {
-      const result = await chrome.storage.local.get(['domain_overrides']);
+      const result = await chrome.storage.local.get<{ domain_overrides?: DomainOverrides }>(['domain_overrides']);
       const overrides = result.domain_overrides || {};
       overrides[websiteDomain] = emailDomain;
       await chrome.storage.local.set({ domain_overrides: overrides });
@@ -408,7 +416,7 @@ class PopupController {
 
   private async clearOverride(websiteDomain: string): Promise<void> {
     try {
-      const result = await chrome.storage.local.get(['domain_overrides']);
+      const result = await chrome.storage.local.get<{ domain_overrides?: DomainOverrides }>(['domain_overrides']);
       const overrides = result.domain_overrides || {};
       delete overrides[websiteDomain];
       await chrome.storage.local.set({ domain_overrides: overrides });
@@ -471,7 +479,7 @@ class PopupController {
   private async checkForUpdates() {
     try {
       // Inline version check to avoid ES module imports in Chrome
-      const cached = await chrome.storage.local.get(['version_check']);
+      const cached = await chrome.storage.local.get<{ version_check?: VersionInfo }>(['version_check']);
       const versionInfo = cached.version_check;
 
       if (versionInfo && versionInfo.updateAvailable) {

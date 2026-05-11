@@ -95,7 +95,7 @@ export async function getCachedVersionInfo(storage: any): Promise<VersionInfo | 
   try {
     const cached = await storage.local.get(['version_check']);
     return cached.version_check || null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -124,7 +124,7 @@ export async function hasSeenUpdateNotification(storage: any): Promise<boolean> 
     // User has seen notification if they've seen it within the last 7 days
     const seenRecently = Date.now() - result.update_notification_seen < 7 * 24 * 60 * 60 * 1000;
     return seenRecently;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

@@ -4,12 +4,6 @@ import { AccountManager, TOKEN_REFRESH_ALARM } from '../shared/account-manager';
 declare const __CHROME_CLIENT_ID__: string;
 declare const __CHROME_CLIENT_SECRET__: string;
 
-interface FetchOTPMessage {
-  action: 'fetchOTP';
-  domain: string;
-  autoFill?: boolean;
-}
-
 interface OTPResponse {
   success: boolean;
   otp?: string;
@@ -57,9 +51,7 @@ const chromeIdentity = {
 const chromeStorage = {
   local: {
     get: (keys: string | string[]): Promise<Record<string, unknown>> => {
-      return new Promise((resolve) => {
-        chrome.storage.local.get(keys, resolve);
-      });
+      return chrome.storage.local.get<Record<string, unknown>>(keys);
     },
     set: (items: Record<string, unknown>): Promise<void> => {
       return new Promise((resolve) => {

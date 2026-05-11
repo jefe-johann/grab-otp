@@ -4,7 +4,11 @@
 console.log('[Firefox OTP Bridge] Loading on:', window.location.href);
 
 // Listen for direct messages from popup (more reliable than ports)
-browser.runtime.onMessage.addListener((message: { action: string; otp?: string }, _sender, sendResponse) => {
+browser.runtime.onMessage.addListener((
+  message: { action: string; otp?: string },
+  _sender: unknown,
+  sendResponse: (response?: { success: boolean }) => void
+) => {
   console.log('[Firefox OTP Bridge] Received message:', message.action);
 
   if (message.action === 'fillOTP' && message.otp) {
@@ -63,3 +67,5 @@ function fillOTPCode(otpCode: string): void {
 }
 
 console.log('[Firefox OTP Bridge] Ready for OTP data');
+
+export {};

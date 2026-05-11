@@ -11,14 +11,16 @@ class DomainDetector {
 
   private init() {
     // Listen for messages from popup or background script
-    browser.runtime.onMessage.addListener((message) => {
-      if (message.action === 'getCurrentDomain') {
+    browser.runtime.onMessage.addListener((message: unknown) => {
+      const request = message as { action?: string; text?: unknown };
+
+      if (request.action === 'getCurrentDomain') {
         return Promise.resolve({
           domain: this.currentDomain,
           url: window.location.href
         });
-      } else if (message.action === 'copyToClipboard') {
-        return this.copyToClipboard(message.text);
+      } else if (request.action === 'copyToClipboard' && typeof request.text === 'string') {
+        return this.copyToClipboard(request.text);
       }
     });
   }
