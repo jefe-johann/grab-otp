@@ -5,6 +5,8 @@ npm-debug.log*
 # Build outputs
 dist/
 build/
+safari/Grab OTP/Grab OTP Extension/Resources/*
+!safari/Grab OTP/Grab OTP Extension/Resources/.gitkeep
 
 # OAuth secrets and sensitive configuration
 OAuth-client-secret.json
@@ -25,6 +27,8 @@ Thumbs.db
 # IDE files
 .vscode/
 .idea/
+xcuserdata/
+*.xcuserstate
 *.swp
 *.swo
 

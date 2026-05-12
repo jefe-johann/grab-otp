@@ -1,30 +1,28 @@
 {
   "manifest_version": 3,
   "name": "Grab OTP",
-  "version": "1.0.2",
+  "version": "1.0.1",
   "description": "Automatically retrieve OTP codes from Gmail based on the active website's domain",
-  
+
   "permissions": [
     "activeTab",
     "tabs",
     "storage",
-    "identity",
+    "nativeMessaging",
     "scripting",
     "alarms",
     "clipboardWrite"
   ],
-  
+
   "host_permissions": [
     "https://www.googleapis.com/*",
     "https://accounts.google.com/*"
   ],
-  
+
   "background": {
     "service_worker": "background.js"
   },
 
-  
-  
   "action": {
     "default_popup": "popup.html",
     "default_title": "Grab OTP from Gmail",
@@ -35,7 +33,7 @@
       "128": "icons/icon128.png"
     }
   },
-  
+
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

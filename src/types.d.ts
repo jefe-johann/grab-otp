@@ -4,3 +4,5 @@ declare const browser: any;
 declare const __CHROME_CLIENT_ID__: string;
 declare const __FIREFOX_CLIENT_ID__: string;
 declare const __FIREFOX_CLIENT_SECRET__: string;
+declare const __SAFARI_CLIENT_ID__: string;
+declare const __SAFARI_APP_BUNDLE_ID__: string;

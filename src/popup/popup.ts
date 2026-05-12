@@ -1,4 +1,11 @@
 // Browser polyfill types declared in types.d.ts
+type ExtensionApi = typeof chrome;
+
+const extensionGlobal = globalThis as typeof globalThis & {
+  chrome?: ExtensionApi;
+  browser?: ExtensionApi;
+};
+const extensionApi = (extensionGlobal.chrome ?? extensionGlobal.browser) as ExtensionApi;
 
 interface OTPResponse {
   success: boolean;
@@ -122,7 +129,7 @@ class PopupController {
   // Account management methods
   private async loadAccounts() {
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'getAccounts' }) as AccountsResponse;
+      const response = await extensionApi.runtime.sendMessage({ action: 'getAccounts' }) as AccountsResponse;
       this.renderAccounts(response.accounts, response.activeEmail);
     } catch (error) {
       console.error('Error loading accounts:', error);
@@ -198,12 +205,12 @@ class PopupController {
     this.showStatus('Adding Gmail account...', 'loading');
 
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'addAccount' });
+      const response = await extensionApi.runtime.sendMessage({ action: 'addAccount' });
       if (response.success) {
         this.showStatus(`Added account: ${response.email}`, 'success');
         await this.loadAccounts();
       } else {
-        this.showStatus('Failed to add account', 'error');
+        this.showStatus(response.error || 'Failed to add account', 'error');
       }
     } catch (error) {
       console.error('Error adding account:', error);
@@ -215,7 +222,7 @@ class PopupController {
     this.closeAccountDropdown();
 
     try {
-      await chrome.runtime.sendMessage({ action: 'setActiveAccount', email });
+      await extensionApi.runtime.sendMessage({ action: 'setActiveAccount', email });
       await this.loadAccounts();
     } catch (error) {
       console.error('Error switching account:', error);
@@ -229,7 +236,7 @@ class PopupController {
     }
 
     try {
-      await chrome.runtime.sendMessage({ action: 'removeAccount', email });
+      await extensionApi.runtime.sendMessage({ action: 'removeAccount', email });
       await this.loadAccounts();
     } catch (error) {
       console.error('Error removing account:', error);
@@ -239,7 +246,7 @@ class PopupController {
 
   private async displayCurrentDomain() {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await extensionApi.tabs.query({ active: true, currentWindow: true });
       const tabUrl = tab?.url || tab?.pendingUrl;
 
       if (tabUrl) {
@@ -270,7 +277,7 @@ class PopupController {
 
   private async loadAutoFillPreference() {
     try {
-      const result = await chrome.storage.local.get<{ autoFillEnabled?: boolean }>(['autoFillEnabled']);
+      const result = await extensionApi.storage.local.get(['autoFillEnabled']) as { autoFillEnabled?: boolean };
       this.autoFillCheckbox.checked = result.autoFillEnabled ?? true; // Default to true
     } catch (error) {
       console.error('Error loading auto-fill preference:', error);
@@ -280,7 +287,7 @@ class PopupController {
 
   private async saveAutoFillPreference() {
     try {
-      await chrome.storage.local.set({ autoFillEnabled: this.autoFillCheckbox.checked });
+      await extensionApi.storage.local.set({ autoFillEnabled: this.autoFillCheckbox.checked });
     } catch (error) {
       console.error('Error saving auto-fill preference:', error);
     }
@@ -288,7 +295,7 @@ class PopupController {
 
   private async handleGrabOTP() {
     // Check if we have any accounts first
-    const response = await chrome.runtime.sendMessage({ action: 'getAccounts' }) as AccountsResponse;
+    const response = await extensionApi.runtime.sendMessage({ action: 'getAccounts' }) as AccountsResponse;
     if (Object.keys(response.accounts).length === 0) {
       this.showStatus('Please add a Gmail account first', 'error');
       return;
@@ -298,7 +305,7 @@ class PopupController {
     this.showStatus('Searching Gmail for OTP...', 'loading');
 
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tabs = await extensionApi.tabs.query({ active: true, currentWindow: true });
       const tab = tabs[0];
 
       const tabUrl = tab?.url || tab?.pendingUrl;
@@ -317,7 +324,7 @@ class PopupController {
       if (this.autoFillCheckbox.checked) {
         try {
           console.log('[Popup] Auto-fill enabled, injecting bridge immediately...');
-          await chrome.scripting.executeScript({
+          await extensionApi.scripting.executeScript({
             target: { tabId: tab.id! },
             files: ['otp-bridge.js']
           });
@@ -331,30 +338,38 @@ class PopupController {
         }
       }
 
-      const otpResponse = await chrome.runtime.sendMessage({
+      const otpResponse = await extensionApi.runtime.sendMessage({
         action: 'fetchOTP',
         domain: searchDomain,
         autoFill: this.autoFillCheckbox.checked
       } as OTPRequest) as OTPResponse;
 
       if (otpResponse.success && otpResponse.otp) {
-        // Always copy to clipboard
-        await this.copyToClipboard(otpResponse.otp);
+        let autoFilled = false;
 
-        // If auto-fill was enabled, send OTP directly to the content script
+        // If auto-fill was enabled, send OTP directly to the content script.
         if (this.autoFillCheckbox.checked) {
           try {
-            await chrome.tabs.sendMessage(tab.id!, {
+            await extensionApi.tabs.sendMessage(tab.id!, {
               action: 'fillOTP',
               otp: otpResponse.otp
             });
-            this.showStatus(`OTP auto-filled & copied: ${otpResponse.otp}`, 'success');
-          } catch {
-            // Bridge might not be available, but OTP is still copied
-            this.showStatus(`OTP copied to clipboard: ${otpResponse.otp}`, 'success');
+            autoFilled = true;
+          } catch (error) {
+            console.log('[Popup] OTP auto-fill skipped:', (error as Error).message);
           }
-        } else {
+        }
+
+        const copied = await this.copyToClipboard(otpResponse.otp);
+
+        if (autoFilled && copied) {
+          this.showStatus(`OTP auto-filled & copied: ${otpResponse.otp}`, 'success');
+        } else if (autoFilled) {
+          this.showStatus(`OTP auto-filled: ${otpResponse.otp}`, 'success');
+        } else if (copied) {
           this.showStatus(`OTP copied to clipboard: ${otpResponse.otp}`, 'success');
+        } else {
+          this.showStatus(`OTP found: ${otpResponse.otp} (copy manually)`, 'success');
         }
       } else {
         this.showStatus(otpResponse.error || 'No OTP found in recent emails', 'error');
@@ -367,12 +382,35 @@ class PopupController {
     }
   }
 
-  private async copyToClipboard(text: string) {
+  private async copyToClipboard(text: string): Promise<boolean> {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (error) {
+        console.warn('Modern clipboard write failed, trying fallback:', error);
+      }
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+
     try {
-      await navigator.clipboard.writeText(text);
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, text.length);
+      return document.execCommand('copy');
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
-      throw new Error('Failed to copy to clipboard');
+      return false;
+    } finally {
+      textarea.remove();
     }
   }
 
@@ -394,7 +432,7 @@ class PopupController {
   // Domain override methods
   private async getOverride(websiteDomain: string): Promise<string | null> {
     try {
-      const result = await chrome.storage.local.get<{ domain_overrides?: DomainOverrides }>(['domain_overrides']);
+      const result = await extensionApi.storage.local.get(['domain_overrides']) as { domain_overrides?: DomainOverrides };
       const overrides = result.domain_overrides || {};
       return overrides[websiteDomain] || null;
     } catch (error) {
@@ -405,10 +443,10 @@ class PopupController {
 
   private async saveOverride(websiteDomain: string, emailDomain: string): Promise<void> {
     try {
-      const result = await chrome.storage.local.get<{ domain_overrides?: DomainOverrides }>(['domain_overrides']);
+      const result = await extensionApi.storage.local.get(['domain_overrides']) as { domain_overrides?: DomainOverrides };
       const overrides = result.domain_overrides || {};
       overrides[websiteDomain] = emailDomain;
-      await chrome.storage.local.set({ domain_overrides: overrides });
+      await extensionApi.storage.local.set({ domain_overrides: overrides });
     } catch (error) {
       console.error('Error saving domain override:', error);
     }
@@ -416,10 +454,10 @@ class PopupController {
 
   private async clearOverride(websiteDomain: string): Promise<void> {
     try {
-      const result = await chrome.storage.local.get<{ domain_overrides?: DomainOverrides }>(['domain_overrides']);
+      const result = await extensionApi.storage.local.get(['domain_overrides']) as { domain_overrides?: DomainOverrides };
       const overrides = result.domain_overrides || {};
       delete overrides[websiteDomain];
-      await chrome.storage.local.set({ domain_overrides: overrides });
+      await extensionApi.storage.local.set({ domain_overrides: overrides });
     } catch (error) {
       console.error('Error clearing domain override:', error);
     }
@@ -479,7 +517,7 @@ class PopupController {
   private async checkForUpdates() {
     try {
       // Inline version check to avoid ES module imports in Chrome
-      const cached = await chrome.storage.local.get<{ version_check?: VersionInfo }>(['version_check']);
+      const cached = await extensionApi.storage.local.get(['version_check']) as { version_check?: VersionInfo };
       const versionInfo = cached.version_check;
 
       if (versionInfo && versionInfo.updateAvailable) {

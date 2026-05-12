@@ -6,9 +6,9 @@ A cross-browser WebExtension that automatically retrieves OTP codes from Gmail b
 
 - 🔐 **Auto OTP Detection** - Finds verification codes in Gmail emails matching your current website
 - 📋 **Clipboard Copy** - Automatically copies OTP codes to clipboard  
-- ⚡ **Auto-Fill** - Fills OTP codes directly into website forms (Chrome)
+- ⚡ **Auto-Fill** - Fills OTP codes directly into website forms where supported
 - 🛡️ **Security First** - Minimal permissions, OAuth 2.0, no sensitive data logging
-- 🌐 **Cross-Browser** - Works on Chrome and Firefox
+- 🌐 **Cross-Browser** - Works on Chrome, Firefox, and Safari
 
 ## How It Works
 
@@ -38,6 +38,7 @@ npm install
 # Build for your browser
 npm run build:chrome   # For Chrome/Edge/Brave
 npm run build:firefox  # For Firefox
+npm run package:safari # For Safari
 ```
 
 **Loading in Chrome:**
@@ -52,6 +53,14 @@ npm run build:firefox  # For Firefox
 3. Navigate to `dist/firefox` and select `manifest.json`
 
 **Note:** Firefox temporary extensions are removed when the browser closes. For persistent installation, use `web-ext` to create a signed `.xpi` file.
+
+**Loading in Safari:**
+1. Set `SAFARI_CLIENT_ID` in `.env` using a Google native/macOS OAuth client.
+2. Run `npm run package:safari`.
+3. Open `safari/Grab OTP/Grab OTP.xcodeproj` in Xcode.
+4. Build and run the `Grab OTP` app, then enable the extension in Safari Settings.
+
+Safari's OAuth redirect URI is derived from the client ID as `com.googleusercontent.apps.<client-id-prefix>:/oauth2redirect`.
 
 ### From GitHub Releases
 1. Download the latest release from [Releases](https://github.com/jefe-johann/grab-otp/releases)
@@ -69,12 +78,12 @@ See [Privacy Policy](PRIVACY_POLICY.md) for full details.
 
 ## Browser Support
 
-| Feature | Chrome | Firefox |
-|---------|--------|---------|
-| OTP Detection | ✅ | ✅ |
-| Clipboard Copy | ✅ | ✅ |
-| Auto-Fill | ✅ | ⚠️ Limited |
-| Badge Notifications | ✅ | ✅ |
+| Feature | Chrome | Firefox | Safari |
+|---------|--------|---------|--------|
+| OTP Detection | ✅ | ✅ | ✅ |
+| Clipboard Copy | ✅ | ✅ | ✅ |
+| Auto-Fill | ✅ | ⚠️ Limited | ✅ |
+| Badge Notifications | ✅ | ✅ | ✅ |
 
 ## Development
 
@@ -84,9 +93,11 @@ See [Privacy Policy](PRIVACY_POLICY.md) for full details.
 npm install
 
 # Build commands
-npm run build         # Build both Chrome and Firefox versions
+npm run build         # Build Chrome, Firefox, and Safari versions
 npm run build:chrome  # Build Chrome version only
 npm run build:firefox # Build Firefox version only
+npm run build:safari  # Build Safari web extension resources only
+npm run package:safari # Build and sync Safari resources into Xcode
 
 # Development
 npm run dev          # Watch mode for development
@@ -105,12 +116,13 @@ The extension includes a default OAuth client that works out-of-the-box for most
 If you fork this project and redistribute it, you **MUST** use your own OAuth credentials:
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable the Gmail API
-3. Create OAuth 2.0 credentials (Web application)
-4. Set authorized redirect URI: `https://{your-extension-id}.extensions.allizom.org/` (Firefox) or `https://{your-extension-id}.chromiumapp.org/` (Chrome)
+3. Create OAuth 2.0 credentials for each browser: Chrome extension for Chrome, Web application for Firefox, and a native/macOS app client for Safari
+4. Set authorized redirect URI: `https://{your-extension-id}.extensions.allizom.org/` (Firefox), `https://{your-extension-id}.chromiumapp.org/` (Chrome), or `com.googleusercontent.apps.<client-id-prefix>:/oauth2redirect` (Safari)
 5. Set environment variables before building:
    ```bash
    export FIREFOX_CLIENT_ID="your-client-id.apps.googleusercontent.com"
    export CHROME_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+   export SAFARI_CLIENT_ID="your-native-client-id.apps.googleusercontent.com"
    npm run build
    ```
 
@@ -125,6 +137,8 @@ If you fork this project and redistribute it, you **MUST** use your own OAuth cr
 - `src/` - TypeScript source code
 - `dist/chrome/` - Built Chrome extension
 - `dist/firefox/` - Built Firefox extension
+- `dist/safari/` - Built Safari extension resources
+- `safari/` - Safari wrapper app and Xcode project
 - `docs/` - Documentation and development notes
 
 ## Contributing

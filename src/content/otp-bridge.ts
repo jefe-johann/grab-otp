@@ -2,10 +2,18 @@
 // Injected immediately on user click to maintain activeTab permission
 // Receives OTP data via direct message from popup
 
+type ExtensionApi = typeof chrome;
+
+const extensionGlobal = globalThis as typeof globalThis & {
+  chrome?: ExtensionApi;
+  browser?: ExtensionApi;
+};
+const extensionApi = (extensionGlobal.chrome ?? extensionGlobal.browser) as ExtensionApi;
+
 console.log('[OTP Bridge] Content script loaded on:', window.location.href);
 
 // Listen for direct messages from popup (more reliable than ports)
-chrome.runtime.onMessage.addListener((
+extensionApi.runtime.onMessage.addListener((
   message: { action: string; otp?: string },
   _sender: chrome.runtime.MessageSender,
   sendResponse: (response?: { success: boolean }) => void
